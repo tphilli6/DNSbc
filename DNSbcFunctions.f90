@@ -1,5 +1,7 @@
 subroutine  DNSbcStart(Lx, Ly, Lz, dx, dy, dz, My, Mz)
+
   use DNSbc, only : dp, setupDNSFilter
+  implicit none
 
   real(dp) :: Lx, Ly, Lz, dx, dy, dz
   integer  :: My, Mz
@@ -10,25 +12,27 @@ end subroutine
 
 subroutine DNSbcStop()
   use DNSbc, only : closeDNSFilter
+  implicit none
 
   call closeDNSFilter()
 
 end subroutine
 
-subroutine DNSVelocityPurturbation(vel, jj, kk)
-  use DNSbc, only : dp, Ualpha
+subroutine DNSVelocityPerturbation(vel, jj, kk)
+  use DNSbc, only : dp, Ua
 
   implicit none
 
   integer, intent(in) :: jj, kk
   real(dp), dimension(3), intent(out) :: vel
 
-  call Ualpha(vel, jj, kk)
+  vel = Ua(:,jj,kk) 
 
 end subroutine
 
 subroutine DNSVelocity(vel, vp, velAve, Rij)
   use DNSbc, only : dp
+  implicit none
   
   real(dp), dimension(3,3), intent(in) :: Rij
   real(dp), dimension(3),   intent(in) :: vp
@@ -38,10 +42,12 @@ subroutine DNSVelocity(vel, vp, velAve, Rij)
   real(dp) :: a11, a21, a22, a31, a32, a33
 
   a11 = sqrt(Rij(1,1))
-  a21 = Rij(1,2)/a11
+
+  a21 = Rij(2,1)/a11
   a22 = sqrt( Rij(2,2) - a21**2 )
-  a31 = Rij(1,3)/a11
-  a32 = ( Rij(2,3) - a21*a31 )/a22
+
+  a31 = Rij(3,1)/a11
+  a32 = ( Rij(3,2) - a21*a31 )/a22
   a33 = sqrt( Rij(3,3) - a31**2 - a32**2 )
 
   vel(1) = velAve(1) + vp(1)*a11
@@ -51,8 +57,9 @@ subroutine DNSVelocity(vel, vp, velAve, Rij)
 end subroutine
 
 subroutine DNSUpdate
-  use DNSbc, only : updateRandomField        
+  use DNSbc, only : updateUalpha
+  implicit none
 
-  call updateRandomField()
+  call updateUalpha()
 
 end subroutine
