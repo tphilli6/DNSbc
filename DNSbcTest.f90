@@ -3,26 +3,27 @@ program main
   use mpi
   implicit none
 
-  integer :: niter = 2000
+  integer :: niter = 667
 
   integer :: n, jj,kk
   real(dp), dimension(3) :: vel
   real(dp), dimension(3) :: vsum
-  real(dp) :: uus, vvs, wws, uvs, uws, vws 
+  real(dp) :: uus, vvs, wws, uvs, uws, vws
   real(dp), dimension(3) :: vbar, ubar, vp
-  real(dp) :: uut, vvt, wwt, uvt, uwt, vwt 
+  real(dp) :: uut, vvt, wwt, uvt, uwt, vwt
   real(dp), dimension(3,3) :: Rij
 
-  real(dp) :: uu, vv, ww, uv, uw, vw 
+  real(dp) :: uu, vv, ww, uv, uw, vw
 
   integer :: nave
   integer :: rank, nproc, ierr
 
    !MPI test components
-   call mpi_init(ierr) 
+   call mpi_init(ierr)
    call MPI_COMM_RANK( MPI_COMM_WORLD, rank, ierr)
    call MPI_COMM_SIZE( MPI_COMM_WORLD, nproc, ierr)
-  
+
+
   if (rank==0) then
     print*, 'bk tilde test:'
     print*, 'Input: k=1, n=2.7'
@@ -53,10 +54,10 @@ program main
   Rij(1,:) = (/uu, uv, uw/)
   Rij(2,:) = (/uv, vv, vw/)
   Rij(3,:) = (/uw, vw, ww/)
-    
- 
 
-  nave=0 
+
+
+  nave=0
 
   vsum=0.
   uus =0.
@@ -77,12 +78,12 @@ program main
           vsum = vsum + vel
           nave = nave + 1
 
-          uus = uus + moment(vel(1), vsum(1)/nave, vel(1), vsum(1)/nave) 
-          vvs = vvs + moment(vel(2), vsum(2)/nave, vel(2), vsum(2)/nave) 
-          wws = wws + moment(vel(3), vsum(3)/nave, vel(3), vsum(3)/nave) 
-          uvs = uvs + moment(vel(1),vsum(1)/nave, vel(2), vsum(2)/nave) 
-          uws = uws + moment(vel(1),vsum(1)/nave, vel(3), vsum(3)/nave) 
-          vws = vws + moment(vel(2),vsum(2)/nave, vel(3), vsum(3)/nave) 
+          uus = uus + moment(vel(1), vsum(1)/nave, vel(1), vsum(1)/nave)
+          vvs = vvs + moment(vel(2), vsum(2)/nave, vel(2), vsum(2)/nave)
+          wws = wws + moment(vel(3), vsum(3)/nave, vel(3), vsum(3)/nave)
+          uvs = uvs + moment(vel(1),vsum(1)/nave, vel(2), vsum(2)/nave)
+          uws = uws + moment(vel(1),vsum(1)/nave, vel(3), vsum(3)/nave)
+          vws = vws + moment(vel(2),vsum(2)/nave, vel(3), vsum(3)/nave)
         enddo
       enddo
 
@@ -97,13 +98,12 @@ program main
       !if (rank==0) then
       !  write(*,'(3f8.4, 6f9.3)') vbar, uut, vvt, wwt, uvt, uwt, vwt
       !endif
-
-      call DNSUpdate()
+      call DNSUpdate(0.3_dp*real(n,dp))
 
 
     enddo
 
-
+    print*, 'Rand Test: ', rand(0)
 
     if (rank==0) then
       print*,
@@ -116,10 +116,10 @@ program main
 
     write(*,'(A, I2, A1, 3f8.4, 6f9.3)') 'Processor ', rank, ':', vbar, uut, vvt, wwt, uvt, uwt, vwt
 
-    call closeDNSFilter()    
+    call closeDNSFilter()
 
 
-  call mpi_finalize(ierr)
+    call mpi_finalize(ierr)
 
 contains
 
@@ -127,9 +127,9 @@ contains
     use DNSbc, only : dp
     real(dp) :: u, ubar, v, vbar
     real(dp) :: moment
-  
+
     moment = (u-ubar)*(v-vbar)
-  
+
   end function
 
 end

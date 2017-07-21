@@ -27,7 +27,7 @@ subroutine DNSVelocityPerturbation(vel, jj, kk)
   integer, intent(in) :: jj, kk
   real(dp), dimension(3), intent(out) :: vel
 
-  vel = Ua(:,jj,kk) 
+  vel = Ua(:,jj,kk)
 
 end subroutine
 
@@ -79,7 +79,7 @@ end subroutine DNSVelocityPerturbationX
 subroutine DNSVelocity(vel, vp, velAve, Rij)
   use DNSbc, only : dp
   implicit none
-  
+
   real(dp), dimension(3,3), intent(in) :: Rij
   real(dp), dimension(3),   intent(in) :: vp
   real(dp), dimension(3),   intent(in) :: velAve
@@ -102,10 +102,12 @@ subroutine DNSVelocity(vel, vp, velAve, Rij)
 
 end subroutine
 
-subroutine DNSUpdate
-  use DNSbc, only : updateUalpha
+subroutine DNSUpdate(time)
+  use DNSbc, only : dp, updateUalpha
   implicit none
 
-  call updateUalpha()
+  real(dp), intent(in) :: time
+
+  call updateUalpha(time)
 
 end subroutine
