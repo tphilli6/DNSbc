@@ -1,12 +1,13 @@
-subroutine  DNSbcStart(Lx, Ly, Lz, dx, dy, dz, My, Mz)
+subroutine  DNSbcStart(Lx, Ly, Lz, dx, dy, dz, My, Mz, pY, pZ)
 
   use DNSbc, only : dp, setupDNSFilter
   implicit none
 
   real(dp) :: Lx, Ly, Lz, dx, dy, dz
   integer  :: My, Mz
+  logical  :: pY, pZ
 
-  call setupDNSFilter(Lx, Ly, Lz, dx, dy, dz, My, Mz)
+  call setupDNSFilter(Lx, Ly, Lz, dx, dy, dz, My, Mz, pY, pZ)
 
 end subroutine
 
@@ -29,6 +30,51 @@ subroutine DNSVelocityPerturbation(vel, jj, kk)
   vel = Ua(:,jj,kk) 
 
 end subroutine
+
+subroutine DNSVelocityPerturbationX(vel, y, z)
+  use DNSbc, only : dp, dy, dz, Ua, My, Mz
+
+  implicit none
+ 
+  real(dp), dimension(3), intent(out) :: vel
+  real(dp),               intent(in)  :: y, z
+  real(dp), dimension(1,2) :: L
+  real(dp), dimension(2,1) :: R
+  real(dp), dimension(2,2) :: C
+  real(dp), dimension(1,1) :: vtemp
+
+  integer :: j0, k0, n
+  real(dp) :: y0, z0, yb, zb
+ 
+  j0 = max(int(y/dy),1)
+  if (j0.gt.My-1) then
+    j0=My-1
+  endif
+  y0 = real(j0-1,dp)*dy
+  yb = (y-y0)/dy
+
+  k0 = max(int(z/dz),1)
+  if (k0.gt.Mz-1) then
+    k0=Mz-1
+  endif
+  z0 = real(k0-1,dp)*dz
+  zb = (z-z0)/dz
+
+
+  L(1,1) = 1._dp - yb
+  L(1,2) = yb
+  R(1,1) = 1._dp - zb
+  R(2,1) = zb
+
+
+  do n=1,3
+    C = Ua(n, j0:j0+1, k0:k0+1) 
+    vtemp = matmul(matmul(L,C), R)
+    vel(n) = vtemp(1,1)
+  enddo 
+
+end subroutine DNSVelocityPerturbationX
+
 
 subroutine DNSVelocity(vel, vp, velAve, Rij)
   use DNSbc, only : dp

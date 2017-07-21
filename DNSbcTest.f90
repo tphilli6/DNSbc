@@ -39,7 +39,8 @@ program main
 
 
 
-  call setupDNSFilter(.5_dp, .5_dp, .5_dp, .10_dp, .10_dp, .10_dp, 10, 10)
+  call setupDNSFilter(.5_dp, .5_dp, .5_dp, .10_dp, .10_dp, .10_dp, 11, 11, &
+                      .false., .false.)
 
   ! Expected
   ubar = (/ 2.0_dp, 0._dp, 0._dp /)

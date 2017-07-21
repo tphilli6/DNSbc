@@ -6,19 +6,19 @@
     real(dp), parameter :: pi=4._dp*atan(1._dp)
 
     ! User supplied input length scale and mesh spacing
-    real(dp) :: Lx=0.125           
-    real(dp) :: Ly=0.125
-    real(dp) :: Lz=0.125
+    real(dp) :: Lx, Ly, Lz
 
-    real(dp) :: dx=0.06125
-    real(dp) :: dy=0.06125
-    real(dp) :: dz=0.06125
+    real(dp) :: dx, dy, dz
 
-    integer :: My=10, Mz=10 ! Mesh inflow plane dimensions
+    integer :: My, Mz ! Mesh inflow plane dimensions
     integer :: Nx, Ny, Nz
 
     real(dp), allocatable, dimension(:,:,:) :: Rx, Ry, Rz, Ua
     real(dp), allocatable, dimension(:,:,:) :: bijk !Filter coefficients
+  
+    !if periodic, random field is also periodic
+    logical :: pY=.false.
+    logical :: pZ=.false.
    
 contains
 
@@ -26,11 +26,13 @@ contains
     !---------------------------------------------------------------------------
     !---------------------------------------------------------------------------
     !---------------------------------------------------------------------------
-    subroutine setupDNSFilter(LLx, LLy, LLz, ddx, ddy, ddz, My, Mz)
+    subroutine setupDNSFilter(LLx, LLy, LLz, ddx, ddy, ddz, MMy, MMz, ppY, ppZ)
     use mpi
 
       real(dp) :: LLx, LLy, LLz, ddx, ddy, ddz
-      integer  :: ii, jj, kk, My, Mz
+      logical  :: ppY, ppZ
+
+      integer  :: ii, jj, kk, MMy, MMz
       real(dp) :: nnx, nny, nnz
       real(dp) :: sqrt3=sqrt(3._dp)
  
@@ -42,6 +44,10 @@ contains
       dx=ddx
       dy=ddy
       dz=ddz
+      My=MMy
+      Mz=MMz
+      pY=ppY
+      pZ=ppZ
 
       ! Compute filter width 
       nnx = Lx/dx
@@ -60,8 +66,10 @@ contains
                   Rz(-Nx:Nx, -Ny+1:Ny+My, -Nz+1:Nz+Mz), &
                   bijk(-Nx:Nx, -Ny:Ny, -Nz:Nz),         &
                   Ua(3, My, Mz) )
-    
+   
+         
         ! Initialize random number array
+        call srand(20) !sets the random seed for reproduction of results
         do kk=-Nz+1,Nz+Mz
           do jj=-Ny+1,Ny+My
             do ii=-Nx,Nx
@@ -71,7 +79,11 @@ contains
             enddo
           enddo
         enddo
-   
+  
+        call periodic(Rx)
+        call periodic(Ry)
+        call periodic(Rz)
+ 
         !Compute filter coefficients
         do kk=-Nz,Nz
           do jj=-Ny,Ny
@@ -131,7 +143,7 @@ contains
     use mpi
 
       integer :: rank, ierr
-      integer :: jj, kk
+      integer :: ii, jj, kk
 
       call MPI_COMM_RANK( MPI_COMM_WORLD, rank, ierr)
       if (rank==0) then
@@ -146,6 +158,8 @@ contains
       endif
 
       call MPI_Bcast( Ua, 3*My*Mz, MPI_DOUBLE, 0, MPI_COMM_WORLD, ierr)
+      call MPI_Barrier(MPI_COMM_WORLD, ierr)
+
 
     end subroutine updateUalpha
 
@@ -177,10 +191,40 @@ contains
         enddo
       enddo
 
+      !update if periodic
+      call periodic(Rx)
+      call periodic(Ry)
+      call periodic(Rz)
 
 
     end subroutine updateRandomField
 
+    !---------------------------------------------------------------------------
+    !---------------------------------------------------------------------------
+    !---------------------------------------------------------------------------
+    ! Update random field for periodic boundary conditions
+    subroutine periodic(R)
+
+    implicit none
+
+    real(dp), dimension(-Nx:Nx, -Ny+1:Ny+My, -Nz+1:Nz+Mz), intent(inout) :: R 
+
+    !Periodic in y
+    if (pY) then
+      R(:, My+1:My+Ny,:) = R(:, 1:Ny, :)
+      R(:, 1-Ny:0,:)    = R(:, My-Ny:My, :)
+    endif
+
+    if (pZ) then
+      R(: ,:, Mz+1:Mz+Nz) = R(: , :, 1:Nz)
+      R(: ,:, 1-Nz:0)    = R(: , :, Mz-Nz:Mz)
+    endif
+    
+ 
+   
+
+
+    end subroutine periodic
     !---------------------------------------------------------------------------
     !---------------------------------------------------------------------------
     !---------------------------------------------------------------------------
