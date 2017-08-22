@@ -102,12 +102,11 @@ subroutine DNSVelocity(vel, vp, velAve, Rij)
 
 end subroutine
 
-subroutine DNSUpdate(time)
+subroutine DNSUpdate(currenttime)
   use DNSbc, only : dp, updateUalpha
   implicit none
 
-  real(dp), intent(in) :: time
-
-  call updateUalpha(time)
+  real(dp), intent(in) :: currenttime
+  call updateUalpha(currenttime)
 
 end subroutine
