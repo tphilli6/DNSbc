@@ -3,7 +3,7 @@ program main
   use mpi
   implicit none
 
-  integer :: niter = 667
+  integer :: niter=10
 
   integer :: n, jj,kk
   real(dp), dimension(3) :: vel
@@ -17,12 +17,13 @@ program main
 
   integer :: nave
   integer :: rank, nproc, ierr
+ 
+  real(dp) :: t0, t1, tstart, tfinal
 
    !MPI test components
    call mpi_init(ierr)
    call MPI_COMM_RANK( MPI_COMM_WORLD, rank, ierr)
    call MPI_COMM_SIZE( MPI_COMM_WORLD, nproc, ierr)
-
 
   if (rank==0) then
     print*, 'bk tilde test:'
@@ -39,9 +40,27 @@ program main
   endif
 
 
+  ! Fast Test
+  !call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .000001_dp, .005_dp/9._dp, 0.005_dp/9._dp, 10, 10, &
+  !                    .false., .false.)
+  
+  ! More realistic test but still fast-ish
+  !call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .000001_dp, .005_dp/29._dp, 0.005_dp/29._dp, 30, 30, &
+  !                    .false., .false.)
 
-  call setupDNSFilter(.5_dp, .5_dp, .5_dp, .10_dp, .10_dp, .10_dp, 11, 11, &
+  ! Tests of scaling  ------------------------------------------------
+  !call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .000001_dp, .005_dp/79._dp, 0.005_dp/79._dp, 80, 80, &
+  !                    .false., .false.)
+
+  !call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .0000005_dp, .005_dp/159._dp, 0.005_dp/159._dp, 160, 160, &
+  !                    .false., .false.)
+
+  !call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .00000025_dp, .005_dp/319._dp, 0.005_dp/319._dp, 320, 320, &
+  !                    .false., .false.)
+
+  call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .000000125_dp, .005_dp/639._dp, 0.005_dp/639._dp, 640, 640, &
                       .false., .false.)
+  
 
   ! Expected
   ubar = (/ 2.0_dp, 0._dp, 0._dp /)
@@ -59,18 +78,20 @@ program main
 
   nave=0
 
-  vsum=0.
-  uus =0.
-  vvs =0.
-  wws =0.
-  uvs =0.
-  vws =0.
-  vws =0.
+  vsum=0._dp
+  uus =0._dp
+  vvs =0._dp
+  wws =0._dp
+  uvs =0._dp
+  uws =0._dp
+  vws =0._dp
 
+    call cpu_time(tstart)
     do n=1,niter
-
+      call cpu_time(t0)
       do kk=1,Mz
         do jj=1,My
+
           !call ComputeDNSVelocity(vel, jj, kk)
           !call Ualpha(vel, jj, kk)
           call DNSVelocityPerturbation(vp, jj, kk)
@@ -86,6 +107,7 @@ program main
           vws = vws + moment(vel(2),vsum(2)/nave, vel(3), vsum(3)/nave)
         enddo
       enddo
+ 
 
       vbar=vsum/nave
       uut = uus/nave
@@ -95,13 +117,18 @@ program main
       uwt = uws/nave
       vwt = vws/nave
 
-      !if (rank==0) then
-      !  write(*,'(3f8.4, 6f9.3)') vbar, uut, vvt, wwt, uvt, uwt, vwt
-      !endif
-      call DNSUpdate(0.3_dp*real(n,dp))
+
+      call DNSUpdate(0.000005*real(n,dp))
+
+      call cpu_time(t1)
+ 
+      if (mod(n,10)==0) &
+      print*, "n=",n, "time=", t1-t0, "seconds ", "U=[", vbar,"]"
 
 
     enddo
+    call cpu_time(tfinal)
+    print*, 'Average time per iteration: ', (tfinal-tstart)/niter, 's'
 
     print*, 'Rand Test: ', rand(0)
 
@@ -113,13 +140,13 @@ program main
     endif
 
     call MPI_Barrier(MPI_COMM_WORLD, ierr)
-
+    
     write(*,'(A, I2, A1, 3f8.4, 6f9.3)') 'Processor ', rank, ':', vbar, uut, vvt, wwt, uvt, uwt, vwt
 
     call closeDNSFilter()
 
 
-    call mpi_finalize(ierr)
+    call MPI_Finalize(ierr)
 
 contains
 
