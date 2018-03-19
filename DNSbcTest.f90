@@ -42,15 +42,15 @@ program main
 
   ! Fast Test
   !call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .000001_dp, .005_dp/9._dp, 0.005_dp/9._dp, 10, 10, &
-  !                    .false., .false.)
+  !                    .true., .true.)
   
   ! More realistic test but still fast-ish
-  !call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .000001_dp, .005_dp/29._dp, 0.005_dp/29._dp, 30, 30, &
-  !                    .false., .false.)
+  call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .000001_dp, .005_dp/29._dp, 0.005_dp/29._dp, 30, 30, &
+                      .true., .true.)
 
   ! Tests of scaling  ------------------------------------------------
   !call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .000001_dp, .005_dp/79._dp, 0.005_dp/79._dp, 80, 80, &
-  !                    .false., .false.)
+  !                    .true., .true.)
 
   !call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .0000005_dp, .005_dp/159._dp, 0.005_dp/159._dp, 160, 160, &
   !                    .false., .false.)
@@ -58,8 +58,8 @@ program main
   !call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .00000025_dp, .005_dp/319._dp, 0.005_dp/319._dp, 320, 320, &
   !                    .false., .false.)
 
-  call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .000000125_dp, .005_dp/639._dp, 0.005_dp/639._dp, 640, 640, &
-                      .false., .false.)
+  !call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .000000125_dp, .005_dp/639._dp, 0.005_dp/639._dp, 640, 640, &
+  !                    .false., .false.)
   
 
   ! Expected

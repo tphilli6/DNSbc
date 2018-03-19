@@ -43,23 +43,40 @@ subroutine DNSVelocityPerturbationX(vel, y, z)
   real(dp), dimension(2,2) :: C
   real(dp), dimension(1,1) :: vtemp
 
-  integer :: j0, k0, n
-  real(dp) :: y0, z0, yb, zb
- 
-  j0 = max(int(y/dy),1)
-  if (j0.gt.My-1) then
-    j0=My-1
-  endif
-  y0 = real(j0-1,dp)*dy
-  yb = (y-y0)/dy
+  integer :: j0, k0, n, jj, kk
+  real(dp) :: y0, y00, z0, z00, yb, zb
 
-  k0 = max(int(z/dz),1)
-  if (k0.gt.Mz-1) then
-    k0=Mz-1
-  endif
-  z0 = real(k0-1,dp)*dz
-  zb = (z-z0)/dz
+  y00=0._dp 
+  z00=0._dp
 
+  do jj=0,My-1
+    if (y>=dy*jj) then
+      yb=(y-dy*jj)/dy
+      j0=jj
+    endif
+  enddo
+
+  do kk=0,Mz-1
+    if (z>=dz*kk) then
+      zb=(z-dz*kk)/dz
+      k0=kk
+    endif
+  enddo
+
+
+  !j0 = max(int(y/dy),1)
+  !if (j0.gt.My-1) then
+  !  j0=My-1
+  !endif
+  !y0 = real(j0-1,dp)*dy
+  !yb = (y-y0)/dy
+
+  !k0 = max(int((z-z00)/dz),1)
+  !if (k0.gt.Mz-1) then
+  !  k0=Mz-1
+  !endif
+  !z0 = real(k0-1,dp)*dz
+  !zb = (z-z0)/dz
 
   L(1,1) = 1._dp - yb
   L(1,2) = yb
@@ -68,7 +85,7 @@ subroutine DNSVelocityPerturbationX(vel, y, z)
 
 
   do n=1,3
-    C = Ua(n, j0:j0+1, k0:k0+1) 
+    C = Ua(j0:j0+1, k0:k0+1, n) 
     vtemp = matmul(matmul(L,C), R)
     vel(n) = vtemp(1,1)
   enddo 

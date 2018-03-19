@@ -15,8 +15,10 @@
     real(dp), allocatable, dimension(:,:,:) :: Rx, Ry, Rz, Ua
     real(dp), allocatable, dimension(:,:)   :: bjk !Filter coefficients
     real(dp), allocatable, dimension(:) :: bii, bjj, bkk 
+ 
+    real(dp) :: currentTime
 
-    integer :: Nextra=2 !extra padding in the first index for Nextra velocity output
+    integer :: Nextra=0 !extra padding in the first index for Nextra velocity output
 
     logical, allocatable, dimension(:,:) :: updateR
     real(dp), allocatable, dimension(:,:) :: timeArray, dtArray !Filter coefficients
@@ -100,6 +102,9 @@ contains
         write(*,'(A)') 'Initializing DNS bc module...'
         write(*,'(A)') '-----------------------------------'
         write(*,'(A)') 'Size of Padding:'
+        write(*,'(A,e12.4,A,e12.4,A,e12.4)') 'Lx=',Lx, ', Ly=',Ly, ', Lz=',Lz
+        write(*,'(A,e12.4,A,e12.4,A,e12.4)') 'Dx=',dx, ', Dy=',dy, ', Dz=',dz
+        write(*,'(A,f3.2,A,f3.2,A,f3.2)') 'nx=',nnx, ', ny=',nny, ', nz=',nnz
         write(*,'(A,I3.0,A,I3.0,A,I3.0)') 'Nx=',Nx, ', Ny=',Ny, ', Nz=',Nz
         print*,
         write(*,'(A)') 'Size of background mesh:'
@@ -135,6 +140,7 @@ contains
         updateR=.true. 
         timeArray=0._dp
         dtArray=Lx
+        currentTime=-1._dp
 
         call periodic(Rx)
         call periodic(Ry)
@@ -361,34 +367,67 @@ contains
 
       integer  :: rank, ierr
       real(dp) :: dt
+      real(dp), dimension(3,3) :: Rij
+      real(dp), dimension(My,Mz,3) :: vel
+      real(dp), dimension(3) :: velave
 
-      integer  :: nUpdated
+      integer  :: nUpdated, ii,jj
 
       call MPI_COMM_RANK( MPI_COMM_WORLD, rank, ierr)
 
       if (rank==0) then
+        print*, 'current time: ', time, currentTime
+        !if (time>currentTime) then
 
-        dt = dx ! just for clarity
+          currentTime=time
 
-        nUpdated=1
-        do while (nUpdated.gt.0)
-          updateR=.false.
+          dt = dx ! just for clarity
+
+         ! nUpdated=1
+         ! do while (nUpdated.gt.0)
+         !   updateR=.false.
+         !   
+         !   where (time.gt.timeArray)
+         !     updateR=.true.
+         !     timeArray = timeArray+dtArray
+         !   end where
           
-          where (time.gt.timeArray)
-            updateR=.true.
-            timeArray = timeArray+dtArray
-          end where
-        
-          call updateRandomField(updateR, nUpdated)
-        end do
+            call updateRandomField(updateR, nUpdated)
+         ! end do
 
-        call Ualpha(Uat1, 1)
-        if (Nextra>=1) call Ualpha(Uat2, 2)
-        if (Nextra>=2) call Ualpha(Uat3, 3)
+         !update if periodic
+         call periodic(Rx)
+         call periodic(Ry)
+         call periodic(Rz)
+
+          write(*,'(A)') 'DNSbc: Updated random array.'
+
+          call Ualpha(Uat1, 1)
+          if (Nextra>=1) call Ualpha(Uat2, 2)
+          if (Nextra>=2) call Ualpha(Uat3, 3)
  
-        call interpolateVelocity(time)
+          !call interpolateVelocity(time)
+          Ua=Uat1
 
+          Rij(1,:) = (/.01_dp, 0._dp, 0._dp/)
+          Rij(2,:) = (/.00_dp, 0.01_dp, 0._dp/)
+          Rij(3,:) = (/.00_dp, 0._dp, 0.01_dp/)
+          velave = (/1.0_dp, 0._dp, 0._dp/)
+          do jj=1,101
+          do ii=1,101
+          call DNSVelocity(vel(ii,jj,:), Ua(ii,jj,:), velave, Rij)
+          enddo
+          enddo
+          !print*, 'shape Rx: ', shape(Rx)
+          !print*, 'shape Ua: ', shape(Ua)
+          write(87,'(10201(E23.15))') Ua 
+          write(88,'(10201(E23.15))') vel 
+          !write(89,'(2916(E23.15))') Rx(1,:,:)
+          !write(89,'(2916(E23.15))') Ry(1,:,:)
+          !write(89,'(2916(E23.15))') Rz(1,:,:)
+          !write(*,'(A)') 'DNSbc: Interpolated velocity to current time.'
 
+        !endif
       endif
 
       call MPI_Bcast( Ua, 3*My*Mz, MPI_DOUBLE, 0, MPI_COMM_WORLD, ierr)
@@ -409,7 +448,7 @@ contains
 
 
       do kk=1,Mz
-        do jj=1,Mz
+        do jj=1,My
 
           dt1 = (timeArray(jj,kk) - time)/dtArray(jj,kk)
           dt2 = (timeArray(jj,kk) - dtArray(jj,kk) - time)/dtArray(jj,kk)
@@ -462,10 +501,6 @@ contains
       enddo
 
 
-      !update if periodic
-      call periodic(Rx)
-      call periodic(Ry)
-      call periodic(Rz)
 
     end subroutine updateRandomField
 
@@ -477,16 +512,16 @@ contains
     subroutine periodic(R)
       implicit none
 
-      real(dp), dimension(-Nx:Nx, -Ny+1:Ny+My, -Nz+1:Nz+Mz), intent(inout) :: R 
+      real(dp), dimension(-Nx:, -Ny+1:, -Nz+1:), intent(inout) :: R 
 
       !Periodic in y
       if (pY) then
-        R(:, My+1:My+Ny,:) = R(:, 1:Ny, :)
-        R(:, 1-Ny:0,:)    = R(:, My-Ny:My, :)
+        R(:, My:My+Ny,:) = R(:, 1:Ny+1, :)
+        R(:, 1-Ny:0,:) = R(:,My-Ny:My, :)
       endif
 
       if (pZ) then
-        R(: ,:, Mz+1:Mz+Nz) = R(: , :, 1:Nz)
+        R(: ,:, Mz:Mz+Nz) = R(: , :, 1:Nz+1)
         R(: ,:, 1-Nz:0)    = R(: , :, Mz-Nz:Mz)
       endif
       
