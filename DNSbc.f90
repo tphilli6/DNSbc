@@ -409,19 +409,10 @@ contains
           !call interpolateVelocity(time)
           Ua=Uat1
 
-          Rij(1,:) = (/.01_dp, 0._dp, 0._dp/)
-          Rij(2,:) = (/.00_dp, 0.01_dp, 0._dp/)
-          Rij(3,:) = (/.00_dp, 0._dp, 0.01_dp/)
-          velave = (/1.0_dp, 0._dp, 0._dp/)
-          do jj=1,101
-          do ii=1,101
-          call DNSVelocity(vel(ii,jj,:), Ua(ii,jj,:), velave, Rij)
-          enddo
-          enddo
           !print*, 'shape Rx: ', shape(Rx)
           !print*, 'shape Ua: ', shape(Ua)
-          write(87,'(10201(E23.15))') Ua 
-          write(88,'(10201(E23.15))') vel 
+          !write(87,'(10201(E23.15))') Ua 
+          !write(88,'(10201(E23.15))') vel 
           !write(89,'(2916(E23.15))') Rx(1,:,:)
           !write(89,'(2916(E23.15))') Ry(1,:,:)
           !write(89,'(2916(E23.15))') Rz(1,:,:)
