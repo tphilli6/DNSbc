@@ -18,7 +18,7 @@
  
     real(dp) :: currentTime
 
-    integer :: Nextra=0 !extra padding in the first index for Nextra velocity output
+    integer :: Nextra=2 !extra padding in the first index for Nextra velocity output
 
     logical, allocatable, dimension(:,:) :: updateR
     real(dp), allocatable, dimension(:,:) :: timeArray, dtArray !Filter coefficients
@@ -30,6 +30,9 @@
     logical :: pY=.false.
     logical :: pZ=.false.
    
+    real(dp), allocatable, dimension(:)   :: y, z !Filter coefficients
+
+    integer :: fidout = 101
 
 contains
 
@@ -111,6 +114,8 @@ contains
         write(*,'(A,I3.0,A,I3.0)') 'My=',My, ', Mz=',Mz
         print*,
         
+        open(fidout,file='Velocity.dat')
+
         !Estimate size in bytes ------------------------------------------------------
         totalSize= real(3*size(Rx)+size(timeArray) &
                      +size(dtArray)+4*size(Ua)+size(bjk)+3*size(bii),dp)/2._dp**17 &
@@ -204,6 +209,12 @@ contains
 
       endif
 
+
+!      allocate( y(My), &
+!                z(Mz) )
+!
+      !Testing code for variable background mesh size
+      
 
       call MPI_Barrier(MPI_COMM_WORLD, ierr)
       call MPI_Bcast( Ua, 3*My*Mz, MPI_DOUBLE, 0, MPI_COMM_WORLD, ierr)
@@ -377,23 +388,23 @@ contains
 
       if (rank==0) then
         print*, 'current time: ', time, currentTime
-        !if (time>currentTime) then
+        if (time>currentTime) then
 
           currentTime=time
 
           dt = dx ! just for clarity
 
-         ! nUpdated=1
-         ! do while (nUpdated.gt.0)
-         !   updateR=.false.
-         !   
-         !   where (time.gt.timeArray)
-         !     updateR=.true.
-         !     timeArray = timeArray+dtArray
-         !   end where
-          
-            call updateRandomField(updateR, nUpdated)
-         ! end do
+          nUpdated=1
+          do while (nUpdated.gt.0)
+            updateR=.false.
+            
+            where (time.gt.timeArray)
+              updateR=.true.
+              timeArray = timeArray+dtArray
+            end where
+         
+           call updateRandomField(updateR, nUpdated)
+          end do
 
          !update if periodic
          call periodic(Rx)
@@ -406,19 +417,19 @@ contains
           if (Nextra>=1) call Ualpha(Uat2, 2)
           if (Nextra>=2) call Ualpha(Uat3, 3)
  
-          !call interpolateVelocity(time)
-          Ua=Uat1
+          call interpolateVelocity(time)
+          !Ua=Uat1
 
           !print*, 'shape Rx: ', shape(Rx)
           !print*, 'shape Ua: ', shape(Ua)
-          !write(87,'(10201(E23.15))') Ua 
+          write(fidout,'(10201(E23.15))') Ua 
           !write(88,'(10201(E23.15))') vel 
-          !write(89,'(2916(E23.15))') Rx(1,:,:)
-          !write(89,'(2916(E23.15))') Ry(1,:,:)
-          !write(89,'(2916(E23.15))') Rz(1,:,:)
+          write(89,'(324(E23.15))') Rx(1,:,:)
+          write(89,'(324(E23.15))') Ry(1,:,:)
+          write(89,'(324(E23.15))') Rz(1,:,:)
           !write(*,'(A)') 'DNSbc: Interpolated velocity to current time.'
 
-        !endif
+        endif
       endif
 
       call MPI_Bcast( Ua, 3*My*Mz, MPI_DOUBLE, 0, MPI_COMM_WORLD, ierr)
@@ -507,12 +518,13 @@ contains
 
       !Periodic in y
       if (pY) then
-        R(:, My:My+Ny,:) = R(:, 1:Ny+1, :)
-        R(:, 1-Ny:0,:) = R(:,My-Ny:My, :)
+        R(:, My:My+Ny,:) = R(:, 1:Ny, :)
+        R(:, 1-Ny:0,:)    = R(:, My-Ny:My, :)
       endif
 
+      !Periodic in z
       if (pZ) then
-        R(: ,:, Mz:Mz+Nz) = R(: , :, 1:Nz+1)
+        R(: ,:, Mz:Mz+Nz) = R(: , :, 1:Nz)
         R(: ,:, 1-Nz:0)    = R(: , :, Mz-Nz:Mz)
       endif
       
