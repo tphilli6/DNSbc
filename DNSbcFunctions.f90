@@ -27,23 +27,76 @@ end subroutine
 !---------------------------------------------------------------------------
 !unit tested
 subroutine readTurbProperties(turbFile)
-  use DNSbc, only : yuu, uu, vv, ww, uv, uw, vw, yuu_read
+  use DNSbc, only : yuu, uu, vv, ww, uv, uw, vw, yuu_read, yuu_constant
   implicit none
 
   character(*), intent(in) :: turbFile
-  integer :: i, n
+  integer :: i, n, ierr
 
-  open(21, file=turbFile, status='old')
-  read(21, *) n
-  allocate( yuu(n), uu(n), vv(n), ww(n), uv(n), uw(n), vw(n) )
-  do i=1,n
-    read(21, '(7(E23.15))') yuu(i), uu(i), vv(i), ww(i), uv(i), uw(i), vw(i) 
-  enddo
-  close(21)
-  yuu_read=.true.
+  if (.not.yuu_constant) then
+
+    open(21, file=turbFile, status='old', iostat=ierr)
+    read(21, *, iostat=ierr) n
+    allocate( yuu(n), uu(n), vv(n), ww(n), uv(n), uw(n), vw(n) )
+    do i=1,n
+      read(21, '(7(E23.15))', iostat=ierr) yuu(i), uu(i), vv(i), ww(i), uv(i), uw(i), vw(i) 
+    enddo
+    close(21)
+  
+    if (ierr.ne.0) then
+      write(*,'(A)') 'Error opening or reading ',turbFile
+      write(*,'(A)') '--Writing example file'
+  
+      !Write sample file
+      open(22, file='Sample-'//turbFile, status='unknown')
+      write(22,'(A)') 'n [number of lines (integer)]'
+      write(22,'(A)') 'y1  uu1  vv1  ww1  uv1  uw1  vw1 [(float)]'
+      write(22,'(A)') 'y2  uu2  vv2  ww2  uv2  uw2  vw2 [(float)]'
+      write(22,'(A)') '...'
+      write(22,'(A)') 'yn  uun  vvn  wwn  uvn  uwn  vwn [(float)]'
+      close(22)
+  
+      stop
+    endif
+  
+    yuu_read=.true.
+
+  else
+    write(*,'(A)') 'Warning. Turbulent properties exists through setTurbProperties.'
+
+  endif 
 
 end subroutine
 
+
+!Set turbulent flow properties
+!---------------------------------------------------------------------------
+!---------------------------------------------------------------------------
+!---------------------------------------------------------------------------
+subroutine setTurbProperties(uuIn, vvIn, wwIn, uvIn, uwIn, vwIn)
+  use DNSbc, only : dp, yuu, uu, vv, ww, uv, uw, vw, yuu_read, yuu_constant
+  implicit none
+
+  real(dp) :: uuIn, vvIn, wwIn, uvIn, uwIn, vwIn
+
+  if (.not.yuu_read) then
+
+    allocate( yuu(1), uu(1), vv(1), ww(1), uv(1), uw(1), vw(1) )
+    uu = uuIn
+    vv = vvIn
+    ww = wwIn
+    uv = uvIn
+    uw = uwIn
+    vw = vwIn
+
+    yuu_constant = .true.
+  else
+    write(*,'(A)') 'Warning. Turbulent properties exists through readTurbProperties.'
+
+  endif
+
+
+end subroutine setTurbProperties
 
 !Read velocity profile
 !---------------------------------------------------------------------------
@@ -51,23 +104,72 @@ end subroutine
 !---------------------------------------------------------------------------
 !unit tested
 subroutine readVelProfile(velFile)
-  use DNSbc, only : yvel, velprof, yvel_read
+  use DNSbc, only : yvel, velprof, yvel_read, yvel_constant
   implicit none
 
   character(*), intent(in) :: velFile
-  integer :: i, n
+  integer :: i, n, ierr
 
-  open(21, file=velFile, status='old')
-  read(21, *) n
-  allocate( yvel(n), velprof(n,3) )
-  do i=1,n
-    read(21, '(4(E23.15))') yvel(i), velprof(i,:)
-  enddo
-  close(21)
-  yvel_read=.true.
+ 
+  if (.not.yvel_constant) then 
+    open(21, file=velFile, status='old', iostat=ierr)
+    read(21, *, iostat=ierr) n
+    allocate( yvel(n), velprof(n,3) )
+    do i=1,n
+      read(21, '(4(E23.15))', iostat=ierr) yvel(i), velprof(i,:)
+    enddo
+    close(21)
+
+
+    if (ierr.ne.0) then
+      write(*,'(A)') 'Error opening or reading ',velFile
+      write(*,'(A)') '--Writing example file'
+
+      !Write sample file
+      open(22, file='Sample-'//velFile, status='unknown')
+      write(22,'(A)') 'n [number of lines (integer)]'
+      write(22,'(A)') 'y1  u1  v1  w1 [(float)]'
+      write(22,'(A)') 'y2  u2  v2  w2 [(float)]'
+      write(22,'(A)') '...'
+      write(22,'(A)') 'yn  un  vn  wn [(float)]'
+      close(22)
+
+      stop
+    endif
+
+
+    yvel_read=.true.
+
+   else
+    write(*,'(A)') 'Warning. Velocity profile already exists through setVelProfile.'
+
+   endif
 
 end subroutine
 
+!Set velocity profile
+!---------------------------------------------------------------------------
+!---------------------------------------------------------------------------
+!---------------------------------------------------------------------------
+subroutine setVelProfile(velProfIn)
+  use DNSbc, only : dp, yvel, velProf, yvel_read, yvel_constant
+  implicit none
+
+  real(dp) :: velProfIn
+
+  if (.not.yvel_read) then
+
+    allocate( yvel(1), velprof(1,3) )
+    velProf = velProfIn
+    yvel_constant = .true.
+
+  else
+    write(*,'(A)') 'Warning. Velocity profile already exists through readVelProfile.'
+
+  endif
+
+
+end subroutine setVelProfile
     
 !Get velocity @ y
 !---------------------------------------------------------------------------
@@ -75,15 +177,25 @@ end subroutine
 !---------------------------------------------------------------------------
 !unit tested
 subroutine getVelocity(y, vel)
-  use DNSbc, only : dp, yvel, velprof, interpolateToY
+  use DNSbc, only : dp, yvel, velprof, interpolateToY, &
+                    yvel_read, yvel_constant
   implicit none
 
   real(dp), intent(in) :: y
   real(dp), dimension(3), intent(out) :: vel
-   
-  vel(1) = interpolateToY(y, yvel, velprof(:,1)) 
-  vel(2) = interpolateToY(y, yvel, velprof(:,2)) 
-  vel(3) = interpolateToY(y, yvel, velprof(:,3)) 
+  
+  if (yvel_read) then
+    vel(1) = interpolateToY(y, yvel, velprof(:,1)) 
+    vel(2) = interpolateToY(y, yvel, velprof(:,2)) 
+    vel(3) = interpolateToY(y, yvel, velprof(:,3)) 
+
+  elseif (yvel_constant) then 
+    vel = velprof(1,:)
+
+  else
+    write(*,'(A)') 'Error! Velocity data not present.'
+    stop
+  endif
 
 end subroutine 
 
@@ -93,18 +205,33 @@ end subroutine
 !---------------------------------------------------------------------------
 !unit tested
 subroutine getTurbProperties(y, uuOut, vvOut, wwOut, uvOut, uwOut, vwOut)
-  use DNSbc, only : dp, yuu, uu, vv, ww, uv, uw, vw, interpolateToY
+  use DNSbc, only : dp, yuu, uu, vv, ww, uv, uw, vw, interpolateToY, &
+                    yuu_read, yuu_constant
       implicit none
 
   real(dp), intent(in) :: y
   real(dp), intent(out) :: uuOut, vvOut, wwOut, uvOut, uwOut, vwOut
-   
+  
+  if (yuu_read) then
   uuOut  = interpolateToY(y, yuu, uu) 
   vvOut  = interpolateToY(y, yuu, vv) 
   wwOut  = interpolateToY(y, yuu, ww) 
   uvOut  = interpolateToY(y, yuu, uv) 
   uwOut  = interpolateToY(y, yuu, uw) 
   vwOut  = interpolateToY(y, yuu, vw) 
+
+  elseif (yuu_constant) then
+    uuOut = uu(1)
+    vvOut = vv(1)
+    wwOut = ww(1)
+    uvOut = uv(1)
+    uwOut = uw(1)
+    vwOut = vw(1)
+
+  else
+    write(*,'(A)') 'Error! Turbulent data not present.'
+    stop
+  endif
 
 end subroutine 
 

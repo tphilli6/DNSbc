@@ -37,10 +37,14 @@
     integer :: fidout = 101
 
     real(dp), allocatable, dimension(:) :: yuu, uu, vv, ww, uv, uw, vw
+    logical :: yuu_read=.false.
+    logical :: yuu_constant=.false.
+
     real(dp), allocatable, dimension(:) :: yvel
     real(dp), allocatable, dimension(:,:) :: velprof
-    logical :: yuu_read=.false.
     logical :: yvel_read=.false.
+    logical :: yvel_constant=.false.
+
 
 contains
 
@@ -272,8 +276,8 @@ contains
                   Ymesh,&
                   Zmesh )
 
-      if (yuu_read) deallocate(yuu, uu, vv, ww, uv, uw, vw)
-      if (yvel_read) deallocate(yvel, velprof)
+      if (yuu_read.or.yuu_constant) deallocate(yuu, uu, vv, ww, uv, uw, vw)
+      if (yvel_read.or.yvel_constant) deallocate(yvel, velprof)
 
     endsubroutine closeDNSFilter
 
