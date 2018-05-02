@@ -1,3 +1,25 @@
+! Functions detached from a module for easier calling
+!
+!---------------------------------------------------------------------------
+! Subroutines:
+!---------------------------------------------------------------------------
+! subroutine DNSbcStart(Lx, Ly, Lz, dx, dy, dz, My, Mz, Ym, Zm, pY, pZ)       -initialize DNSbc routines
+! subroutine DNSbcStop()                                                      -deallocate all variables (called when finished)
+! subroutine readTurbProperties(turbFile)                                     -read turbulent properties profile from file
+! subroutine setTurbProperties(uuIn, vvIn, wwIn, uvIn, uwIn, vwIn)            -set a constant value for all turbulent properties
+! subroutine getTurbProperties(y, uuOut, vvOut, wwOut, uvOut, uwOut, vwOut)   -get the turbulent properties at a specific y location
+! subroutine readVelProfile(velFile)                                          -read turbulent properties profile from file
+! subroutine setVelProfile(velProfIn)                                         -set a constant value for all turbulent properties
+! subroutine getVelocity(y, vel)                                              -get the velocity at a specific y location 
+! subroutine getDNSvelocity(y, z, vel)                                        -get the velocity at a specific y and z location
+! subroutine DNSVelocityPerturbation(vel, jj, kk)                             -get the velocity perturbation at a jj, kk location
+! subroutine DNSVelocityPerturbationX(vel, y, z)                              -get the velocity perturbation at an (interpolated) y, z location 
+! subroutine DNSVelocity(vel, vp, velAve, Rij)                                -using the perturbation velocity, average velocity, and Rij evaluate DNS velocity
+! subroutine DNSUpdate(currenttime)                                           -update the DNS random array to a new time
+!---------------------------------------------------------------------------
+    
+
+
 subroutine  DNSbcStart(Lx, Ly, Lz, dx, dy, dz, My, Mz, Ym, Zm, pY, pZ)
 
   use DNSbc, only : dp, setupDNSFilter
