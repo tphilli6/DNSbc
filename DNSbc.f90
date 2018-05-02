@@ -15,6 +15,8 @@
     real(dp), allocatable, dimension(:,:,:) :: Rx, Ry, Rz, Ua
     real(dp), allocatable, dimension(:,:)   :: bjk !Filter coefficients
     real(dp), allocatable, dimension(:) :: bii, bjj, bkk 
+
+    real(dp), allocatable, dimension(:) :: Ymesh, Zmesh
  
     real(dp) :: currentTime
 
@@ -34,20 +36,36 @@
 
     integer :: fidout = 101
 
+    real(dp), allocatable, dimension(:) :: yuu, uu, vv, ww, uv, uw, vw
+    real(dp), allocatable, dimension(:) :: yvel
+    real(dp), allocatable, dimension(:,:) :: velprof
+    logical :: yuu_read=.false.
+    logical :: yvel_read=.false.
+
 contains
+
+
 
     !Initialize the DNS inflow filter
     !---------------------------------------------------------------------------
     !---------------------------------------------------------------------------
     !---------------------------------------------------------------------------
-    subroutine setupDNSFilter(LLx, LLy, LLz, ddx, ddy, ddz, MMy, MMz, ppY, ppZ)
+    subroutine setupDNSFilter(LLx, LLy, LLz, &
+                              ddx, ddy, ddz, &
+                              MMy, MMz, &
+                              YYmesh, ZZmesh, &
+                              ppY, ppZ)
     use mpi
 
 
-      real(dp) :: LLx, LLy, LLz, ddx, ddy, ddz
-      logical  :: ppY, ppZ
+      real(dp), intent(in) :: LLx, LLy, LLz, ddx, ddy, ddz
+      integer, intent(in)  :: MMy, MMz
+      real(dp), dimension(MMy), intent(in) :: YYmesh
+      real(dp), dimension(MMz), intent(in) :: ZZmesh
+      logical, intent(in)  :: ppY, ppZ
 
-      integer  :: ii, jj, kk, MMy, MMz
+
+      integer  :: ii, jj, kk
       real(dp) :: nnx, nny, nnz
       real(dp) :: sqrt3=sqrt(3._dp)
 
@@ -58,8 +76,16 @@ contains
 
       !integer, allocatable, dimension(:) :: seed
 
+
       call cpu_time(start)
       start0=start
+
+      call MPI_COMM_RANK( MPI_COMM_WORLD, rank, ierr)
+
+      !if (rank==0) then
+      !print*, 'Ymesh:', YYmesh
+      !print*, 'Zmesh:', ZZmesh
+      !endif
 
       Lx=LLx
       Ly=LLy
@@ -72,6 +98,10 @@ contains
       pY=ppY
       pZ=ppZ
 
+      allocate( Ymesh(My), Zmesh(Mz) )
+      Ymesh=YYmesh
+      Zmesh=ZZmesh
+
       ! Compute filter width
       nnx = Lx/dx
       nny = Ly/dy
@@ -81,10 +111,8 @@ contains
       Nz = int(ceiling(2*nnz))
 
 
-      call MPI_COMM_RANK( MPI_COMM_WORLD, rank, ierr)
 
       if (rank==0) then
-
         allocate( Rx(-Nx:Nx+Nextra, -Ny+1:Ny+My, -Nz+1:Nz+Mz), &
                   Ry(-Nx:Nx+Nextra, -Ny+1:Ny+My, -Nz+1:Nz+Mz), &
                   Rz(-Nx:Nx+Nextra, -Ny+1:Ny+My, -Nz+1:Nz+Mz), &
@@ -98,7 +126,7 @@ contains
                   bjk(-Ny:Ny, -Nz:Nz),                  &
                   bii(-Nx:Nx),                          &
                   bjj(-Ny:Ny),                          &
-                  bkk(-Nz:Nz) )
+                  bkk(-Nz:Nz))
 
         call srand(20)
 
@@ -144,7 +172,7 @@ contains
  
         updateR=.true. 
         timeArray=0._dp
-        dtArray=Lx
+        dtArray=dx
         currentTime=-1._dp
 
         call periodic(Rx)
@@ -159,7 +187,7 @@ contains
           bjj(jj) = bk(jj,nny,Ny)
         enddo
         do kk=-Nz,Nz
-          bkk(kk) = bk(kk,nnz,Nz);
+          bkk(kk) = bk(kk,nnz,Nz)
         enddo
 
         do kk=-Nz,Nz
@@ -240,8 +268,12 @@ contains
                   bjk,  &
                   bii,  &
                   bjj,  &
-                  bkk )
+                  bkk,  &
+                  Ymesh,&
+                  Zmesh )
 
+      if (yuu_read) deallocate(yuu, uu, vv, ww, uv, uw, vw)
+      if (yvel_read) deallocate(yvel, velprof)
 
     endsubroutine closeDNSFilter
 
@@ -365,6 +397,34 @@ contains
 
     end subroutine bijk_times_R3
 
+    !Interpolate to y
+    !---------------------------------------------------------------------------
+    !---------------------------------------------------------------------------
+    !---------------------------------------------------------------------------
+    function interpolateToY(y, yvar, var)
+      !use DNSbc, only : dp
+      !implicit none
+    
+      real(dp) :: y
+      real(dp), dimension(:) :: yvar, var
+      real(dp) :: interpolateToY
+     
+      integer :: i, n
+      real(dp) :: m
+    
+      interpolateToY=0._dp
+      n = size(yvar)
+    
+      do i=1,n-1
+        if ((y>=yvar(i)).and.(y<=yvar(i+1)))then
+          m = ( var(i+1)-var(i) )/(yvar(i+1)-yvar(i))
+          interpolateToY = m*(y-yvar(i)) + var(i)
+          return          
+        endif
+      enddo
+     
+    end function
+
     !---------------------------------------------------------------------------
     !---------------------------------------------------------------------------
     !---------------------------------------------------------------------------
@@ -378,18 +438,21 @@ contains
 
       integer  :: rank, ierr
       real(dp) :: dt
-      real(dp), dimension(3,3) :: Rij
-      real(dp), dimension(My,Mz,3) :: vel
-      real(dp), dimension(3) :: velave
+      !real(dp), dimension(3,3) :: Rij
+      !real(dp), dimension(My,Mz,3) :: vel
+      !real(dp), dimension(3) :: velave
 
-      integer  :: nUpdated, ii,jj
+      integer  :: nUpdated
+      real(dp) :: t0, t1
 
       call MPI_COMM_RANK( MPI_COMM_WORLD, rank, ierr)
 
       if (rank==0) then
-        print*, 'current time: ', time, currentTime
+        call cpu_time(t0)
+
         if (time>currentTime) then
 
+          print*, 'current time: ', time, timeArray(1,1), currentTime, nUpdated
           currentTime=time
 
           dt = dx ! just for clarity
@@ -422,14 +485,17 @@ contains
 
           !print*, 'shape Rx: ', shape(Rx)
           !print*, 'shape Ua: ', shape(Ua)
-          write(fidout,'(10201(E23.15))') Ua 
+          !write(fidout,'(65536(E23.15))') Ua 
           !write(88,'(10201(E23.15))') vel 
-          write(89,'(324(E23.15))') Rx(1,:,:)
-          write(89,'(324(E23.15))') Ry(1,:,:)
-          write(89,'(324(E23.15))') Rz(1,:,:)
+          !write(89,'(324(E23.15))') Rx(1,:,:)
+          !write(89,'(324(E23.15))') Ry(1,:,:)
+          !write(89,'(324(E23.15))') Rz(1,:,:)
           !write(*,'(A)') 'DNSbc: Interpolated velocity to current time.'
 
         endif
+
+        call cpu_time(t1)
+        write(*,*) 'Update time: ', t1-t0, ' seconds'
       endif
 
       call MPI_Bcast( Ua, 3*My*Mz, MPI_DOUBLE, 0, MPI_COMM_WORLD, ierr)

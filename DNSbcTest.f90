@@ -1,11 +1,14 @@
 program main
-  use dnsbc
+  use dnsbc, only : setupDNSFilter, closeDNSFilter, My, Mz, btildek, bk, &
+                    interpolateToY
   use mpi
+
   implicit none
 
-  integer :: niter=10
+  integer,  parameter :: dp=selected_real_kind(15,307)
+  integer :: niter=1
 
-  integer :: n, jj,kk
+  integer :: n,ii,jj,kk
   real(dp), dimension(3) :: vel
   real(dp), dimension(3) :: vsum
   real(dp) :: uus, vvs, wws, uvs, uws, vws
@@ -16,6 +19,11 @@ program main
   real(dp) :: uu, vv, ww, uv, uw, vw
 
   integer :: nave
+  integer, parameter :: MMy=10
+  integer, parameter :: MMz=10
+  real(dp), dimension(MMy) :: YYmesh
+  real(dp), dimension(MMz) :: ZZmesh
+ 
   integer :: rank, nproc, ierr
  
   real(dp) :: t0, t1, tstart, tfinal
@@ -26,23 +34,22 @@ program main
    call MPI_COMM_SIZE( MPI_COMM_WORLD, nproc, ierr)
 
   if (rank==0) then
-    print*, 'bk tilde test:'
-    print*, 'Input: k=1, n=2.7'
-    print*, 'Expected output: 0.8062'
-    print*, '         Output: ', btildek(1, 2.7_dp)
-    print*,
-
-    print*, 'bk test:'
-    print*, 'Input: k=1, n=2.7, Nx=5'
-    print*, 'Expected output: 0.4906'
-    print*, '         Output: ', bk(1, 2.7_dp, 5)
-    print*,
+    call btildeTest
+    call interpolateToYTest
+    call readTurbPropertiesTest
+    call readVelProfileTest
   endif
 
 
   ! Fast Test
+  do ii=1,MMy
+    YYmesh(ii) = real(ii,dp)*(1._dp/MMy-1)
+  enddo 
+  do ii=1,MMz
+    ZZmesh(ii) = real(ii,dp)*(1._dp/MMz-1)
+  enddo 
   call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .000001_dp, .005_dp/9._dp, 0.005_dp/9._dp, 10, 10, &
-                      .true., .true.)
+                      YYmesh, ZZmesh, .true., .true.)
   
   ! More realistic test but still fast-ish
   !call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .000001_dp, .005_dp/29._dp, 0.005_dp/29._dp, 30, 30, &
@@ -95,6 +102,7 @@ program main
           !call ComputeDNSVelocity(vel, jj, kk)
           !call Ualpha(vel, jj, kk)
           call DNSVelocityPerturbation(vp, jj, kk)
+          !call DNSVelocityPerturbationX(vp, YYmesh(jj), ZZmesh(kk))
           call DNSVelocity(vel, vp, ubar, Rij)
           vsum = vsum + vel
           nave = nave + 1
@@ -159,5 +167,156 @@ contains
 
   end function
 
+  !function interpolateToY(yin)!, yvar, var)
+  !  real(dp) :: yin
+  !  real(dp) :: interpolateToY
+  !
+  !  interpolateToY=0._dp
+  !!Something is working right here...
+  !  print*, yin
+  !  return
+  !
+  !end function
 end
 
+  !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%'
+  ! btilde and bk Test
+  !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%'
+  subroutine btildeTest
+    use dnsbc, only : dp, btildek, bk
+
+    print*, '-----------------------------------------------------------------------'
+    print*, 'bk tilde test:'
+    print*, '-----------------------------------------------------------------------'
+    print*, 'Input: k=1, n=2.7'
+    print*, 'Expected output: 0.8062'
+    write(*,'(A,f6.4)') '          Output: ', btildek(1, 2.7_dp)
+    print*, '-----------------------------------------------------------------------'
+    print*,
+
+    print*, '-----------------------------------------------------------------------'
+    print*, 'bk test:'
+    print*, '-----------------------------------------------------------------------'
+    print*, 'Input: k=1, n=2.7, Nx=5'
+    print*, 'Expected output: 0.4906'
+    write(*,'(A,f6.4)') '          Output: ', bk(1, 2.7_dp, 5)
+    print*, '-----------------------------------------------------------------------'
+    print*,
+
+  end subroutine btildeTest
+  !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%'
+  ! interpolateToY Test
+  !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%'
+  subroutine interpolateToYTest
+    use dnsbc, only : dp, interpolateToY
+
+    real(dp) :: interpolateToY2
+
+
+    print*, '-----------------------------------------------------------------------'
+    print*, 'interpolateToY test:'
+    print*, '-----------------------------------------------------------------------'
+    print*, 'Input: y=0.5, yvar=[0,1], var=[5, 10]'
+    print*, 'Expected output: 7.5'
+    interpolateToY2= interpolateToY(0.5_dp, [0._dp,1._dp],[5._dp,10._dp])
+    write(*,'(A,f3.1)') '          Output: ', interpolateToY2
+    print*, '-----------------------------------------------------------------------'
+    print*,
+
+  end subroutine interpolateToYTest
+
+  !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%'
+  ! readTurbProperties and getTurbProperties test
+  !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%'
+  subroutine readTurbPropertiesTest
+    use dnsbc, only : dp, yuu, uu, vv, ww, uv, uw, vw
+
+    real(dp) :: uuOut, vvOut, wwOut, uvOut, uwOut, vwOut
+
+    print*, '-----------------------------------------------------------------------'
+    print*, 'readTurbProperties test:'
+    print*, '-----------------------------------------------------------------------'
+    open(21, file='turbFileTest.dat', status='unknown')
+    write(21,*) 2
+    write(21, '(7(E23.15))') 0._dp, 5._dp, 5._dp, 5._dp, 5._dp, 5._dp, 5._dp
+    write(21, '(7(E23.15))') 1._dp, 9._dp, 9._dp, 9._dp, 9._dp, 9._dp, 9._dp
+    close(21)
+
+    write(*,'(A)') 'Expected output: |  y | uu | vv | ww | uv | uw | vw |'
+    write(*, '(A17, 7(F5.1))') ' ', 0._dp, 5._dp, 5._dp, 5._dp, 5._dp, 5._dp, 5._dp
+    write(*, '(A17, 7(F5.1))') ' ', 1._dp, 9._dp, 9._dp, 9._dp, 9._dp, 9._dp, 9._dp
+    call readTurbProperties('turbFileTest.dat')
+
+    print*,
+    write(*,'(A)') '         Output: |  y | uu | vv | ww | uv | uw | vw |'
+    write(*, '(A17, 7(F5.1))') ' ', yuu(1), uu(1), vv(1), ww(1), uv(1), uw(1), vw(1)
+    write(*, '(A17, 7(F5.1))') ' ', yuu(2), uu(2), vv(2), ww(2), uv(2), uw(2), vw(2)
+
+    print*, '-----------------------------------------------------------------------'
+    print*,
+
+
+    print*, '-----------------------------------------------------------------------'
+    print*, 'getTurbProperties test:'
+    print*, '-----------------------------------------------------------------------'
+    call getTurbProperties(0.5_dp, uuOut, vvOut, wwOut, uvOut, uwOut, vwOut)
+
+    
+    write(*,'(A)') ' Expected Output: | uu | vv | ww | uv | uw | vw |'
+    write(*,'(A18,6(f5.1))') ' ',7.0_dp,7.0_dp,7.0_dp,7.0_dp,7.0_dp,7.0_dp
+    print*,
+    write(*,'(A)') '          Output: | uu | vv | ww | uv | uw | vw |'
+    write(*,'(A18,6(f5.1))') ' ',uuOut, vvOut, wwOut, uvOut, uwOut, vwOut
+    print*, '-----------------------------------------------------------------------'
+    print*,
+  end subroutine
+
+  !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%'
+  ! readVelProfile and getVelocity test
+  !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%'
+  subroutine readVelProfileTest
+    use dnsbc, only : dp, yvel, velprof
+
+    integer :: n=2
+    real(dp), dimension(3) :: veltest 
+
+    print*, '-----------------------------------------------------------------------'
+    print*, 'readVelProfile test:'
+    print*, '-----------------------------------------------------------------------'
+
+    open(21, file='velFileTest.dat', status='unknown')
+    write(21,*) n
+    write(21, '(4(E23.15))') 0._dp, 2._dp, 4._dp, 6._dp
+    write(21, '(4(E23.15))') 1._dp, 7._dp, 8._dp, 9._dp
+    close(21)
+
+    write(*,'(A)') 'Expected output: | y | u | v | w |'
+    write(*, '(A17, 7(F4.1))') ' ', 0._dp, 2._dp, 4._dp, 6._dp
+    write(*, '(A17, 7(F4.1))') ' ', 1._dp, 7._dp, 8._dp, 9._dp
+    call readVelProfile('velFileTest.dat')
+
+    print*,
+    write(*,'(A)') '         Output: | y | u | v | w |'
+    write(*, '(A17, 7(F4.1))') ' ', yvel(1), velprof(1,1), velprof(1,2), velprof(1,3)
+    write(*, '(A17, 7(F4.1))') ' ', yvel(2), velprof(2,1), velprof(2,2), velprof(2,3)
+
+    print*, '-----------------------------------------------------------------------'
+    print*,
+
+
+    print*, '-----------------------------------------------------------------------'
+    print*, 'getVelocity test:'
+    print*, '-----------------------------------------------------------------------'
+    call getVelocity(0.5_dp, veltest)
+
+    
+    write(*,'(A)') ' Expected Output: | u | v | w |'
+    write(*,'(A18,3(f4.1))') ' ',4.5_dp, 6._dp, 7.5_dp
+    print*,
+    write(*,'(A)') '          Output: | u | v | w |'
+    write(*,'(A18,3(f4.1))') ' ', veltest
+    print*, '-----------------------------------------------------------------------'
+    print*,
+
+
+  end subroutine
