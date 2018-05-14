@@ -14,36 +14,47 @@
 
     real(dp), allocatable, dimension(:,:,:) :: Rx, Ry, Rz, Ua
     real(dp), allocatable, dimension(:,:)   :: bjk !Filter coefficients
-    real(dp), allocatable, dimension(:) :: bii, bjj, bkk 
+    real(dp), allocatable, dimension(:) :: bii, bjj, bkk
 
     real(dp), allocatable, dimension(:) :: Ymesh, Zmesh
- 
+
     real(dp) :: currentTime
 
     integer :: Nextra=2 !extra padding in the first index for Nextra velocity output
 
     logical, allocatable, dimension(:,:) :: updateR
     real(dp), allocatable, dimension(:,:) :: timeArray, dtArray !Filter coefficients
- 
+
     ! Used for 3rd order interpolation for non equal time steps
     real(dp), allocatable, dimension(:,:,:) :: Uat1, Uat2, Uat3
- 
+
     !if periodic, random field is also periodic
     logical :: pY=.false.
     logical :: pZ=.false.
-   
+
     real(dp), allocatable, dimension(:)   :: y, z !Filter coefficients
 
     integer :: fidout = 101
 
+    ! Variables for storage of turbulent quantities as a function of y
     real(dp), allocatable, dimension(:) :: yuu, uu, vv, ww, uv, uw, vw
     logical :: yuu_read=.false.
     logical :: yuu_constant=.false.
 
+    ! variables for storage of velocity profile as a function of y
     real(dp), allocatable, dimension(:) :: yvel
     real(dp), allocatable, dimension(:,:) :: velprof
     logical :: yvel_read=.false.
     logical :: yvel_constant=.false.
+
+    ! Variables for storage of turbulent lengthscale storage as a function of y
+    real(dp), allocatable, dimension(:) :: yLx, yLy, yLz
+    real(dp), allocatable, dimension(:,:) :: Lxvec
+    real(dp), allocatable, dimension(:,:) :: Lyvec
+    real(dp), allocatable, dimension(:,:) :: Lzvec
+    logical, dimension(3) :: yL_read=.false.
+    logical, dimension(3) :: yL_constant=.false.
+
 
 
 contains
@@ -75,7 +86,7 @@ contains
 
 
       integer :: rank, ierr
-      real(dp) :: totalSize 
+      real(dp) :: totalSize
       real(dp) :: start, finish, start0
 
       !integer, allocatable, dimension(:) :: seed
@@ -121,7 +132,7 @@ contains
                   Ry(-Nx:Nx+Nextra, -Ny+1:Ny+My, -Nz+1:Nz+Mz), &
                   Rz(-Nx:Nx+Nextra, -Ny+1:Ny+My, -Nz+1:Nz+Mz), &
                   updateR(-Ny+1:Ny+My, -Nz+1:Nz+Mz),    &
-                  timeArray(-Ny+1:Ny+My, -Nz+1:Nz+Mz),  & 
+                  timeArray(-Ny+1:Ny+My, -Nz+1:Nz+Mz),  &
                   dtArray(-Ny+1:Ny+My, -Nz+1:Nz+Mz),    &
                   Ua(My, Mz, 3),                        &
                   Uat1(My, Mz, 3),                      &
@@ -145,13 +156,13 @@ contains
         write(*,'(A)') 'Size of background mesh:'
         write(*,'(A,I3.0,A,I3.0)') 'My=',My, ', Mz=',Mz
         print*,
-        
+
         open(fidout,file='Velocity.dat')
 
         !Estimate size in bytes ------------------------------------------------------
         totalSize= real(3*size(Rx)+size(timeArray) &
                      +size(dtArray)+4*size(Ua)+size(bjk)+3*size(bii),dp)/2._dp**17 &
-                   +real(size(updateR),dp)/2._dp**20 
+                   +real(size(updateR),dp)/2._dp**20
 
         if (totalSize<=1) then
           write(*,'(A,F5.1,A)') 'Estimated Memory Usage: ',real(totalSize,dp)*2**10, ' KB'
@@ -162,7 +173,7 @@ contains
         endif
         !-----------------------------------------------------------------------------
         write(*,'(A)') '-----------------------------------'
-                
+
 
         do kk=-Nz+1,Nz+Mz
           do jj=-Ny+1,Ny+My
@@ -173,8 +184,8 @@ contains
             enddo
           enddo
         enddo
- 
-        updateR=.true. 
+
+        updateR=.true.
         timeArray=0._dp
         dtArray=dx
         currentTime=-1._dp
@@ -246,7 +257,7 @@ contains
 !                z(Mz) )
 !
       !Testing code for variable background mesh size
-      
+
 
       call MPI_Barrier(MPI_COMM_WORLD, ierr)
       call MPI_Bcast( Ua, 3*My*Mz, MPI_DOUBLE, 0, MPI_COMM_WORLD, ierr)
@@ -306,7 +317,7 @@ contains
     !Evaluate the velocity perturbation
     subroutine bijk_times_R(Vel, Rijk, bi)
       implicit none
-   
+
       real(dp), dimension(-Nx:Nx+Nextra, -Ny+1:Ny+My, -Nz+1:Nz+Mz), intent(in) :: Rijk
       real(dp), dimension(-Nx:Nx+Nextra), intent(in) :: bi
       real(dp), dimension(My,Mz), intent(out) :: Vel
@@ -348,7 +359,7 @@ contains
     !Evaluate the velocity perturbation (slowish algorithm)
     subroutine bijk_times_R2(Vel, Rijk, bi)
       implicit none
-   
+
       real(dp), dimension(-Nx:Nx+Nextra, -Ny+1:Ny+My, -Nz+1:Nz+Mz), intent(in) :: Rijk
       real(dp), dimension(-Nx:Nx+Nextra), intent(in) :: bi
       real(dp), dimension(My,Mz), intent(out) :: Vel
@@ -381,7 +392,7 @@ contains
     !Evaluate the velocity purterbation (slowest algorithm. Go make some coffee...)
     subroutine bijk_times_R3(Vel, Rijk, bi)
       implicit none
-   
+
       real(dp), dimension(-Nx:Nx+Nextra, -Ny+1:Ny+My, -Nz+1:Nz+Mz), intent(in) :: Rijk
       real(dp), dimension(-Nx:Nx+Nextra), intent(in) :: bi
       real(dp), dimension(My,Mz), intent(out) :: Vel
@@ -408,25 +419,25 @@ contains
     function interpolateToY(y, yvar, var)
       !use DNSbc, only : dp
       !implicit none
-    
+
       real(dp) :: y
       real(dp), dimension(:) :: yvar, var
       real(dp) :: interpolateToY
-     
+
       integer :: i, n
       real(dp) :: m
-    
+
       interpolateToY=0._dp
       n = size(yvar)
-    
+
       do i=1,n-1
         if ((y>=yvar(i)).and.(y<=yvar(i+1)))then
           m = ( var(i+1)-var(i) )/(yvar(i+1)-yvar(i))
           interpolateToY = m*(y-yvar(i)) + var(i)
-          return          
+          return
         endif
       enddo
-     
+
     end function
 
     !---------------------------------------------------------------------------
@@ -464,12 +475,12 @@ contains
           nUpdated=1
           do while (nUpdated.gt.0)
             updateR=.false.
-            
+
             where (time.gt.timeArray)
               updateR=.true.
               timeArray = timeArray+dtArray
             end where
-         
+
            call updateRandomField(updateR, nUpdated)
           end do
 
@@ -483,14 +494,14 @@ contains
           call Ualpha(Uat1, 1)
           if (Nextra>=1) call Ualpha(Uat2, 2)
           if (Nextra>=2) call Ualpha(Uat3, 3)
- 
+
           call interpolateVelocity(time)
           !Ua=Uat1
 
           !print*, 'shape Rx: ', shape(Rx)
           !print*, 'shape Ua: ', shape(Ua)
-          !write(fidout,'(65536(E23.15))') Ua 
-          !write(88,'(10201(E23.15))') vel 
+          !write(fidout,'(65536(E23.15))') Ua
+          !write(88,'(10201(E23.15))') vel
           !write(89,'(324(E23.15))') Rx(1,:,:)
           !write(89,'(324(E23.15))') Ry(1,:,:)
           !write(89,'(324(E23.15))') Rz(1,:,:)
@@ -525,7 +536,7 @@ contains
           dt1 = (timeArray(jj,kk) - time)/dtArray(jj,kk)
           dt2 = (timeArray(jj,kk) - dtArray(jj,kk) - time)/dtArray(jj,kk)
           dt3 = (timeArray(jj,kk) - 2._dp*dtArray(jj,kk) - time)/dtArray(jj,kk)
-  
+
           c1 = dt2*dt3/( (dt3-dt1)*(dt1-dt2) )
           c2 = dt1*dt3/( (dt2-dt3)*(dt1-dt2) )
           c3 = dt1*dt2/( (dt2-dt3)*(dt3-dt1) )
@@ -534,7 +545,7 @@ contains
 
         enddo
       enddo
-      
+
 
 
     end subroutine interpolateVelocity
@@ -548,7 +559,7 @@ contains
       implicit none
 
       logical, dimension(-Ny+1:,-Nz+1:), intent(in) :: update
-      integer, intent(out)                :: nUpdated 
+      integer, intent(out)                :: nUpdated
 
       real(dp) :: sqrt3=sqrt(3._dp)
       integer  :: jj, kk
@@ -565,8 +576,8 @@ contains
             Rx(Nx+Nextra,jj,kk) =sqrt3*(2._dp*rand(0) - 1._dp)
             Ry(Nx+Nextra,jj,kk) =sqrt3*(2._dp*rand(0) - 1._dp)
             Rz(Nx+Nextra,jj,kk) =sqrt3*(2._dp*rand(0) - 1._dp)
-            
-            nUpdated=nUpdated+1 
+
+            nUpdated=nUpdated+1
           endif
 
         enddo
@@ -584,7 +595,7 @@ contains
     subroutine periodic(R)
       implicit none
 
-      real(dp), dimension(-Nx:, -Ny+1:, -Nz+1:), intent(inout) :: R 
+      real(dp), dimension(-Nx:, -Ny+1:, -Nz+1:), intent(inout) :: R
 
       !Periodic in y
       if (pY) then
@@ -597,7 +608,7 @@ contains
         R(: ,:, Mz:Mz+Nz) = R(: , :, 1:Nz)
         R(: ,:, 1-Nz:0)    = R(: , :, Mz-Nz:Mz)
       endif
-      
+
 
     end subroutine periodic
 
@@ -636,3 +647,6 @@ contains
     end function bk
 
 end
+
+
+

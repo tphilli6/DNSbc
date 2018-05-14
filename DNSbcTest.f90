@@ -23,9 +23,9 @@ program main
   integer, parameter :: MMz=10
   real(dp), dimension(MMy) :: YYmesh
   real(dp), dimension(MMz) :: ZZmesh
- 
+
   integer :: rank, nproc, ierr
- 
+
   real(dp) :: t0, t1, tstart, tfinal
 
    !MPI test components
@@ -38,19 +38,20 @@ program main
     call interpolateToYTest
     call readTurbPropertiesTest
     call readVelProfileTest
+    call readLengthScaleTest
   endif
 
 
   ! Fast Test
   do ii=1,MMy
     YYmesh(ii) = real(ii,dp)*(1._dp/MMy-1)
-  enddo 
+  enddo
   do ii=1,MMz
     ZZmesh(ii) = real(ii,dp)*(1._dp/MMz-1)
-  enddo 
+  enddo
   call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .000001_dp, .005_dp/9._dp, 0.005_dp/9._dp, 10, 10, &
                       YYmesh, ZZmesh, .true., .true.)
-  
+
   ! More realistic test but still fast-ish
   !call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .000001_dp, .005_dp/29._dp, 0.005_dp/29._dp, 30, 30, &
   !                    .true., .true.)
@@ -67,7 +68,7 @@ program main
 
   !call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .000000125_dp, .005_dp/639._dp, 0.005_dp/639._dp, 640, 640, &
   !                    .false., .false.)
-  
+
 
   ! Expected
   ubar = (/ 2.0_dp, 0._dp, 0._dp /)
@@ -115,7 +116,7 @@ program main
           vws = vws + moment(vel(2),vsum(2)/nave, vel(3), vsum(3)/nave)
         enddo
       enddo
- 
+
 
       vbar=vsum/nave
       uut = uus/nave
@@ -129,7 +130,7 @@ program main
       call DNSUpdate(0.000005*real(n,dp))
 
       call cpu_time(t1)
- 
+
       if (mod(n,10)==0) &
       print*, "n=",n, "time=", t1-t0, "seconds ", "U=[", vbar,"]"
 
@@ -148,7 +149,7 @@ program main
     endif
 
     call MPI_Barrier(MPI_COMM_WORLD, ierr)
-    
+
     write(*,'(A, I2, A1, 3f8.4, 6f9.3)') 'Processor ', rank, ':', vbar, uut, vvt, wwt, uvt, uwt, vwt
 
     call closeDNSFilter()
@@ -261,7 +262,7 @@ end
     print*, '-----------------------------------------------------------------------'
     call getTurbProperties(0.5_dp, uuOut, vvOut, wwOut, uvOut, uwOut, vwOut)
 
-    
+
     write(*,'(A)') ' Expected Output: | uu | vv | ww | uv | uw | vw |'
     write(*,'(A18,6(f5.1))') ' ',7.0_dp,7.0_dp,7.0_dp,7.0_dp,7.0_dp,7.0_dp
     print*,
@@ -278,7 +279,7 @@ end
     use dnsbc, only : dp, yvel, velprof
 
     integer :: n=2
-    real(dp), dimension(3) :: veltest 
+    real(dp), dimension(3) :: veltest
 
     print*, '-----------------------------------------------------------------------'
     print*, 'readVelProfile test:'
@@ -309,7 +310,7 @@ end
     print*, '-----------------------------------------------------------------------'
     call getVelocity(0.5_dp, veltest)
 
-    
+
     write(*,'(A)') ' Expected Output: | u | v | w |'
     write(*,'(A18,3(f4.1))') ' ',4.5_dp, 6._dp, 7.5_dp
     print*,
@@ -320,3 +321,86 @@ end
 
 
   end subroutine
+
+  subroutine readLengthScaleTest
+  use dnsbc, only : dp, yLx, yLy, yLz, Lxvec, Lyvec, Lzvec, yL_read, yL_constant
+
+    integer :: n=2
+
+    print*, '-----------------------------------------------------------------------'
+    print*, 'readLengthScale test:'
+    print*, '-----------------------------------------------------------------------'
+
+    open(21, file='LengthScaletest.dat', status='unknown')
+    write(21,*) n
+    write(21, '(4(E23.15))') 0._dp, 2._dp, 4._dp, 6._dp
+    write(21, '(4(E23.15))') 1._dp, 7._dp, 8._dp, 9._dp
+    close(21)
+
+    write(*,'(A)') 'Expected output: |   y   | Lx_uu | Lx_vv | Lx_ww |'
+    write(*, '(A15, 4(F8.1))') ' ', 0._dp, 2._dp, 4._dp, 6._dp
+    write(*, '(A15, 4(F8.1))') ' ', 1._dp, 7._dp, 8._dp, 9._dp
+
+    call readLengthScale('LengthScaletest.dat', 1)
+    print*,
+    write(*,'(A)') '         Output: |   y   | Lx_uu | Lx_vv | Lx_ww |'
+    write(*, '(A15, 4(F8.1))') ' ', yLx(1), Lxvec(1,1), Lxvec(1,2), Lxvec(1,3)
+    write(*, '(A15, 4(F8.1))') ' ', yLx(2), Lxvec(2,1), Lxvec(2,2), Lxvec(2,3)
+    write(*, *) 'yL_read for x: ',     yL_read(1)
+    write(*, *) 'yL_constant for x: ', yL_constant(1)
+
+    call readLengthScale('LengthScaletest.dat', 2)
+    print*,
+    write(*,'(A)') '         Output: |   y   | Ly_uu | Ly_vv | Ly_ww |'
+    write(*, '(A15, 4(F8.1))') ' ', yLy(1), Lyvec(1,1), Lyvec(1,2), Lyvec(1,3)
+    write(*, '(A15, 4(F8.1))') ' ', yLy(2), Lyvec(2,1), Lyvec(2,2), Lyvec(2,3)
+    write(*, *) 'yL_read for y: ',     yL_read(2)
+    write(*, *) 'yL_constant for y: ', yL_constant(2)
+
+    call readLengthScale('LengthScaletest.dat', 3)
+    print*,
+    write(*,'(A)') '         Output: |   y   | Lz_uu | Lz_vv | Lz_ww |'
+    write(*, '(A15, 4(F8.1))') ' ', yLz(1), Lzvec(1,1), Lzvec(1,2), Lzvec(1,3)
+    write(*, '(A15, 4(F8.1))') ' ', yLz(2), Lzvec(2,1), Lzvec(2,2), Lzvec(2,3)
+    write(*, *) 'yL_read for z: ',     yL_read(3)
+    write(*, *) 'yL_constant for z: ', yL_constant(3)
+
+    print*, '-----------------------------------------------------------------------'
+    print*,
+
+    deallocate( yLx, yLy, yLz, Lxvec, Lyvec, Lzvec)
+    yL_read=.false.
+    yL_constant=.false.
+
+  end subroutine
+
+  subroutine setLengthScaleTest
+  use dnsbc, only : dp, yLx, yLy, yLz, Lxvec, Lyvec, Lzvec
+
+    print*, '-----------------------------------------------------------------------'
+    print*, 'setLengthScale Components test:'
+    print*, '-----------------------------------------------------------------------'
+
+    write(*,'(A)') 'Expected output: |   y   | Lx_uu | Lx_vv | Lx_ww |'
+    write(*, '(A15, 4(F8.1))') ' ', 1._dp, 2._dp, 4._dp, 6._dp
+
+    call setLengthScale(1, 2._dp, 4._dp, 6._dp)
+    print*,
+    write(*,'(A)') '         Output: |   y   | Lx_uu | Lx_vv | Lx_ww |'
+    write(*, '(A15, 4(F8.1))') ' ', yLx(1), Lxvec(1,1), Lxvec(1,2), Lxvec(1,3)
+
+    call setLengthScale(1, 2._dp, 4._dp, 6._dp)
+    print*,
+    write(*,'(A)') '         Output: |   y   | Ly_uu | Ly_vv | Ly_ww |'
+    write(*, '(A15, 4(F8.1))') ' ', yLy(1), Lyvec(1,1), Lyvec(1,2), Lyvec(1,3)
+
+    call setLengthScale(1, 2._dp, 4._dp, 6._dp)
+    print*,
+    write(*,'(A)') '         Output: |   y   | Lz_uu | Lz_vv | Lz_ww |'
+    write(*, '(A15, 4(F8.1))') ' ', yLz(1), Lzvec(1,1), Lzvec(1,2), Lzvec(1,3)
+
+    print*, '-----------------------------------------------------------------------'
+    print*,
+
+  end subroutine
+

@@ -10,14 +10,14 @@
 ! subroutine getTurbProperties(y, uuOut, vvOut, wwOut, uvOut, uwOut, vwOut)   -get the turbulent properties at a specific y location
 ! subroutine readVelProfile(velFile)                                          -read turbulent properties profile from file
 ! subroutine setVelProfile(velProfIn)                                         -set a constant value for all turbulent properties
-! subroutine getVelocity(y, vel)                                              -get the velocity at a specific y location 
+! subroutine getVelocity(y, vel)                                              -get the velocity at a specific y location
 ! subroutine getDNSvelocity(y, z, vel)                                        -get the velocity at a specific y and z location
 ! subroutine DNSVelocityPerturbation(vel, jj, kk)                             -get the velocity perturbation at a jj, kk location
-! subroutine DNSVelocityPerturbationX(vel, y, z)                              -get the velocity perturbation at an (interpolated) y, z location 
+! subroutine DNSVelocityPerturbationX(vel, y, z)                              -get the velocity perturbation at an (interpolated) y, z location
 ! subroutine DNSVelocity(vel, vp, velAve, Rij)                                -using the perturbation velocity, average velocity, and Rij evaluate DNS velocity
 ! subroutine DNSUpdate(currenttime)                                           -update the DNS random array to a new time
 !---------------------------------------------------------------------------
-    
+
 
 
 subroutine  DNSbcStart(Lx, Ly, Lz, dx, dy, dz, My, Mz, Ym, Zm, pY, pZ)
@@ -61,14 +61,14 @@ subroutine readTurbProperties(turbFile)
     read(21, *, iostat=ierr) n
     allocate( yuu(n), uu(n), vv(n), ww(n), uv(n), uw(n), vw(n) )
     do i=1,n
-      read(21, '(7(E23.15))', iostat=ierr) yuu(i), uu(i), vv(i), ww(i), uv(i), uw(i), vw(i) 
+      read(21, '(7(E23.15))', iostat=ierr) yuu(i), uu(i), vv(i), ww(i), uv(i), uw(i), vw(i)
     enddo
     close(21)
-  
+
     if (ierr.ne.0) then
       write(*,'(A)') 'Error opening or reading ',turbFile
       write(*,'(A)') '--Writing example file'
-  
+
       !Write sample file
       open(22, file='Sample-'//turbFile, status='unknown')
       write(22,'(A)') 'n [number of lines (integer)]'
@@ -77,16 +77,16 @@ subroutine readTurbProperties(turbFile)
       write(22,'(A)') '...'
       write(22,'(A)') 'yn  uun  vvn  wwn  uvn  uwn  vwn [(float)]'
       close(22)
-  
+
       stop
     endif
-  
+
     yuu_read=.true.
 
   else
     write(*,'(A)') 'Warning. Turbulent properties exists through setTurbProperties.'
 
-  endif 
+  endif
 
 end subroutine
 
@@ -132,8 +132,8 @@ subroutine readVelProfile(velFile)
   character(*), intent(in) :: velFile
   integer :: i, n, ierr
 
- 
-  if (.not.yvel_constant) then 
+
+  if (.not.yvel_constant) then
     open(21, file=velFile, status='old', iostat=ierr)
     read(21, *, iostat=ierr) n
     allocate( yvel(n), velprof(n,3) )
@@ -182,6 +182,7 @@ subroutine setVelProfile(velProfIn)
   if (.not.yvel_read) then
 
     allocate( yvel(1), velprof(1,3) )
+    yvel = 1._dp
     velProf = velProfIn
     yvel_constant = .true.
 
@@ -190,9 +191,187 @@ subroutine setVelProfile(velProfIn)
 
   endif
 
-
 end subroutine setVelProfile
-    
+
+
+!Get length scale for a coordinate direction
+!---------------------------------------------------------------------------
+!---------------------------------------------------------------------------
+!---------------------------------------------------------------------------
+subroutine readLengthScale(filename, selectfile)
+  use DNSbc, only : yLx, yLy, yLz, Lxvec, Lyvec, Lzvec, yL_read, yL_constant
+
+  interface
+    subroutine readLengthScaleBase(filename, y, L, yL_read, yL_constant)
+      use DNSbc, only : dp
+
+      character(*), intent(in) :: filename
+      real(dp), allocatable, dimension(:),   intent(inout) :: y
+      real(dp), allocatable, dimension(:,:), intent(inout) :: L
+      logical, intent(inout) :: yL_read, yL_constant
+    end subroutine
+
+  end interface
+
+  character(*), intent(in) :: filename
+  integer, intent(in)      :: selectfile
+
+  if (selectfile.eq.1) then
+    call readLengthScaleBase(filename, yLx, Lxvec, yL_read(1), yL_constant(1))
+
+  elseif (selectfile.eq.2) then
+    call readLengthScaleBase(filename, yLy, Lyvec, yL_read(2), yL_constant(2))
+
+  elseif (selectfile.eq.3) then
+    call readLengthScaleBase(filename, yLz, Lzvec, yL_read(3), yL_constant(3))
+
+  endif
+
+end subroutine readLengthScale
+
+
+! Base procedure for calling different length scales
+!---------------------------------------------------------------------------
+!---------------------------------------------------------------------------
+!---------------------------------------------------------------------------
+subroutine readLengthScaleBase(filename, y, L, yL_read, yL_constant)
+  use DNSbc, only : dp
+  implicit none
+
+  character(*), intent(in) :: filename
+  real(dp), allocatable, dimension(:),   intent(inout) :: y
+  real(dp), allocatable, dimension(:,:), intent(inout) :: L
+  logical, intent(inout) :: yL_read, yL_constant
+
+  integer :: i, n, ierr
+
+
+  if (.not.yL_constant) then
+
+    open(21, file=filename, status='old', iostat=ierr)
+    read(21, *, iostat=ierr) n
+    allocate( y(n), L(n,3) )
+    do i=1,n
+      read(21, '(4(E23.15))', iostat=ierr) y(i), L(i,1), L(i,2), L(i,3)
+    enddo
+    close(21)
+    yL_read=.true.
+
+
+    if (ierr.ne.0) then
+      write(*,'(A)') 'Error opening or reading ',filename
+      write(*,'(A)') '--Writing example file'
+
+      !Write sample file
+      open(22, file='Sample-'//filename, status='unknown')
+      write(22,'(A)') 'n [number of lines (integer)]'
+      write(22,'(A)') 'y1  L_uu1  L_vv1  L_ww1 L_avg1 [(float)]'
+      write(22,'(A)') 'y2  L_uu2  L_vv2  L_ww2 L_avg2 [(float)]'
+      write(22,'(A)') '...'
+      write(22,'(A)') 'yn  L_uun  L_vvn  L_wwn L_avgn [(float)]'
+      close(22)
+
+      stop
+    endif
+
+
+  else
+    write(*,'(A)') 'Warning. Length scale already exists through readLengthScale.'
+
+  endif
+
+end subroutine readLengthScaleBase
+
+
+! Set length scale directly
+!---------------------------------------------------------------------------
+!---------------------------------------------------------------------------
+!---------------------------------------------------------------------------
+subroutine setLengthScale(selectfile, L_uu, L_vv, L_ww, L_avg)
+  use DNSbc, only : dp, yLx, yLy, yLz, Lxvec, Lyvec, Lzvec, yL_read, yL_constant
+
+  interface
+    subroutine setLengthScaleBase(y, L, yL_read, yL_constant, &
+                                   L_uu, L_vv, L_ww)
+      use DNSbc, only : dp
+
+      real(dp), allocatable, dimension(:),   intent(inout) :: y
+      real(dp), allocatable, dimension(:,:), intent(inout) :: L
+      logical, intent(inout) :: yL_read, yL_constant
+
+      reaL(dp), optional, intent(in) :: L_uu, L_vv, L_ww
+    end subroutine
+
+  end interface
+
+  real(dp), optional, intent(in) :: L_uu, L_vv, L_ww, L_avg
+  integer, intent(in)      :: selectfile
+
+  if (present(L_avg)) then
+    if (selectfile.eq.1) then
+      call setlengthScaleBase(yLx, Lxvec, yL_read(1), yL_constant(1), &
+                               L_avg, L_avg, L_avg)
+    elseif (selectfile.eq.2) then
+      call setlengthScaleBase(yLy, Lyvec, yL_read(2), yL_constant(2), &
+                               L_avg, L_avg, L_avg)
+    elseif (selectfile.eq.3) then
+      call setlengthScaleBase(yLz, Lzvec, yL_read(3), yL_constant(3), &
+                               L_avg, L_avg, L_avg)
+    endif
+
+  elseif ( present(L_uu).and.present(L_vv).and.present(L_ww) ) then
+    if (selectfile.eq.1) then
+      call setlengthScaleBase(yLx, Lxvec, yL_read(1), yL_constant(1), &
+                               L_uu, L_vv, L_ww)
+    elseif (selectfile.eq.2) then
+      call setlengthScaleBase(yLy, Lyvec, yL_read(2), yL_constant(2), &
+                               L_uu, L_vv, L_ww)
+    elseif (selectfile.eq.3) then
+      call setlengthScaleBase(yLz, Lzvec, yL_read(3), yL_constant(3), &
+                               L_uu, L_vv, L_ww)
+    endif
+
+  else
+
+    write(*,'(A)') 'Error! Argument error in setLengthScaleBase'
+    stop
+
+  endif
+
+
+end subroutine setLengthScale
+
+! Set length scale directly base routine
+!---------------------------------------------------------------------------
+!---------------------------------------------------------------------------
+!---------------------------------------------------------------------------
+subroutine setLengthScaleBase(y, L, yL_read, yL_constant, &
+                              L_uu, L_vv, L_ww)
+  use DNSbc, only : dp
+  implicit none
+
+  real(dp), allocatable, dimension(:),   intent(inout) :: y
+  real(dp), allocatable, dimension(:,:), intent(inout) :: L
+  logical, intent(inout) :: yL_read, yL_constant
+
+  real(dp), optional, intent(in) :: L_uu, L_vv, L_ww
+
+  if (.not.yL_read) then
+
+    allocate( y(1), L(1,3) )
+    y = 1._dp
+    L(1,1) = L_uu
+    L(1,2) = L_vv
+    L(1,3) = L_ww
+
+    yL_constant = .true.
+
+  else
+    write(*,'(A)') 'Warning. Length scale already exists through readLengthScale.'
+
+  endif
+end subroutine setLengthScaleBase
+
 !Get velocity @ y
 !---------------------------------------------------------------------------
 !---------------------------------------------------------------------------
@@ -205,13 +384,13 @@ subroutine getVelocity(y, vel)
 
   real(dp), intent(in) :: y
   real(dp), dimension(3), intent(out) :: vel
-  
-  if (yvel_read) then
-    vel(1) = interpolateToY(y, yvel, velprof(:,1)) 
-    vel(2) = interpolateToY(y, yvel, velprof(:,2)) 
-    vel(3) = interpolateToY(y, yvel, velprof(:,3)) 
 
-  elseif (yvel_constant) then 
+  if (yvel_read) then
+    vel(1) = interpolateToY(y, yvel, velprof(:,1))
+    vel(2) = interpolateToY(y, yvel, velprof(:,2))
+    vel(3) = interpolateToY(y, yvel, velprof(:,3))
+
+  elseif (yvel_constant) then
     vel = velprof(1,:)
 
   else
@@ -219,7 +398,7 @@ subroutine getVelocity(y, vel)
     stop
   endif
 
-end subroutine 
+end subroutine
 
 !Get turbulent properties @ y
 !---------------------------------------------------------------------------
@@ -233,14 +412,14 @@ subroutine getTurbProperties(y, uuOut, vvOut, wwOut, uvOut, uwOut, vwOut)
 
   real(dp), intent(in) :: y
   real(dp), intent(out) :: uuOut, vvOut, wwOut, uvOut, uwOut, vwOut
-  
+
   if (yuu_read) then
-  uuOut  = interpolateToY(y, yuu, uu) 
-  vvOut  = interpolateToY(y, yuu, vv) 
-  wwOut  = interpolateToY(y, yuu, ww) 
-  uvOut  = interpolateToY(y, yuu, uv) 
-  uwOut  = interpolateToY(y, yuu, uw) 
-  vwOut  = interpolateToY(y, yuu, vw) 
+  uuOut  = interpolateToY(y, yuu, uu)
+  vvOut  = interpolateToY(y, yuu, vv)
+  wwOut  = interpolateToY(y, yuu, ww)
+  uvOut  = interpolateToY(y, yuu, uv)
+  uwOut  = interpolateToY(y, yuu, uw)
+  vwOut  = interpolateToY(y, yuu, vw)
 
   elseif (yuu_constant) then
     uuOut = uu(1)
@@ -255,20 +434,20 @@ subroutine getTurbProperties(y, uuOut, vvOut, wwOut, uvOut, uwOut, vwOut)
     stop
   endif
 
-end subroutine 
+end subroutine
 
 !Get DNS velocity
 !---------------------------------------------------------------------------
 !---------------------------------------------------------------------------
 !---------------------------------------------------------------------------
 subroutine getDNSvelocity(y, z, vel)
-  use DNSbc, only : dp 
+  use DNSbc, only : dp
   implicit none
 
   real(dp), intent(in) :: y, z
-  real(dp), dimension(3), intent(out) :: vel 
+  real(dp), dimension(3), intent(out) :: vel
 
-  real(dp), dimension(3,3) :: Rij   
+  real(dp), dimension(3,3) :: Rij
   real(dp) :: uu, vv, ww, uv, uw, vw
 
   real(dp), dimension(3) :: Vinf, velp
@@ -279,12 +458,12 @@ subroutine getDNSvelocity(y, z, vel)
   Rij(1,:) = [uu, uv, uw]
   Rij(2,:) = [uv, vv, vw]
   Rij(3,:) = [uw, vw, ww]
- 
+
   call DNSVelocityPerturbationX(velp, y, z)
   call DNSVelocity(vel, velp, Vinf, Rij)
 
 
-end subroutine 
+end subroutine
 
 
 !Read velocity profile
@@ -307,7 +486,7 @@ subroutine DNSVelocityPerturbationX(vel, y, z)
   use DNSbc, only : dp, Ua, My, Mz, Ymesh, Zmesh
 
   implicit none
- 
+
   real(dp), dimension(3), intent(out) :: vel
   real(dp),               intent(in)  :: y, z
   real(dp), dimension(1,2) :: L
@@ -330,7 +509,7 @@ subroutine DNSVelocityPerturbationX(vel, y, z)
 
   do jj=1,My-1
     if (y>=Ymesh(jj)) then
-      j0=jj 
+      j0=jj
       y0=Ymesh(jj)
       dy=Ymesh(jj+1)-Ymesh(jj)
     endif
@@ -338,7 +517,7 @@ subroutine DNSVelocityPerturbationX(vel, y, z)
 
   do kk=1,Mz-1
     if (z>=Zmesh(kk)) then
-      k0=kk 
+      k0=kk
       z0=Zmesh(kk)
       dz=Zmesh(kk+1)-Zmesh(kk)
     endif
@@ -365,10 +544,10 @@ subroutine DNSVelocityPerturbationX(vel, y, z)
   R(2,1) = zb
 
   do n=1,3
-    C = Ua(j0:j0+1, k0:k0+1,n) 
+    C = Ua(j0:j0+1, k0:k0+1,n)
     vtemp = matmul(matmul(L,C), R)
     vel(n) = vtemp(1,1)
-  enddo 
+  enddo
 
 end subroutine DNSVelocityPerturbationX
 
