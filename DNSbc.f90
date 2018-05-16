@@ -16,7 +16,7 @@
     real(dp), allocatable, dimension(:,:)   :: bjk !Filter coefficients
     real(dp), allocatable, dimension(:) :: bii, bjj, bkk
 
-    real(dp), allocatable, dimension(:) :: Ymesh, Zmesh
+    real(dp), allocatable, dimension(:) :: Ymesh, Zmesh, DYmesh, DZmesh
 
     real(dp) :: currentTime
 
@@ -52,9 +52,13 @@
     real(dp), allocatable, dimension(:,:) :: Lxvec
     real(dp), allocatable, dimension(:,:) :: Lyvec
     real(dp), allocatable, dimension(:,:) :: Lzvec
+
+    real(dp), allocatable, dimension(:,:) :: Lxvec_Ymesh
+    real(dp), allocatable, dimension(:,:) :: Lyvec_Ymesh
+    real(dp), allocatable, dimension(:,:) :: Lzvec_Ymesh
+
     logical, dimension(3) :: yL_read=.false.
     logical, dimension(3) :: yL_constant=.false.
-
 
 
 contains
@@ -113,9 +117,18 @@ contains
       pY=ppY
       pZ=ppZ
 
-      allocate( Ymesh(My), Zmesh(Mz) )
+      allocate( Ymesh(My), Zmesh(Mz), DYmesh(My), DZmesh(Mz) )
       Ymesh=YYmesh
       Zmesh=ZZmesh
+
+      DYmesh(1) = abs(Ymesh(2)-Ymesh(1))
+      DYmesh(2:My-1) = abs( Ymesh(3:My)-Ymesh(1:My-2) )/2._dp
+      DYmesh(My) = abs(Ymesh(My)-Ymesh(My-1))
+
+      DZmesh(1) = abs(Zmesh(2)-Zmesh(1))
+      DZmesh(2:My-1) = abs( Zmesh(3:My)-Zmesh(1:My-2) )/2._dp
+      DZmesh(My) = abs(Zmesh(My)-Zmesh(My-1))
+
 
       ! Compute filter width
       nnx = Lx/dx
@@ -141,7 +154,10 @@ contains
                   bjk(-Ny:Ny, -Nz:Nz),                  &
                   bii(-Nx:Nx),                          &
                   bjj(-Ny:Ny),                          &
-                  bkk(-Nz:Nz))
+                  bkk(-Nz:Nz),                          &
+                  Lxvec_Ymesh(My,3),                    &
+                  Lyvec_Ymesh(My,3),                    &
+                  Lzvec_Ymesh(My,3))
 
         call srand(20)
 
@@ -150,11 +166,11 @@ contains
         write(*,'(A)') 'Size of Padding:'
         write(*,'(A,e12.4,A,e12.4,A,e12.4)') 'Lx=',Lx, ', Ly=',Ly, ', Lz=',Lz
         write(*,'(A,e12.4,A,e12.4,A,e12.4)') 'Dx=',dx, ', Dy=',dy, ', Dz=',dz
-        write(*,'(A,f3.2,A,f3.2,A,f3.2)') 'nx=',nnx, ', ny=',nny, ', nz=',nnz
-        write(*,'(A,I3.0,A,I3.0,A,I3.0)') 'Nx=',Nx, ', Ny=',Ny, ', Nz=',Nz
+        write(*,'(A,f5.0,A,f5.2,A,f5.0)') 'nx=',nnx, ', ny=',nny, ', nz=',nnz
+        write(*,'(A,I5.0,A,I5.0,A,I5.0)') 'Nx=',Nx, ', Ny=',Ny, ', Nz=',Nz
         print*,
         write(*,'(A)') 'Size of background mesh:'
-        write(*,'(A,I3.0,A,I3.0)') 'My=',My, ', Mz=',Mz
+        write(*,'(A,I4.0,A,I4.0)') 'My=',My, ', Mz=',Mz
         print*,
 
         open(fidout,file='Velocity.dat')
@@ -211,6 +227,68 @@ contains
           enddo
         enddo
 
+        !----------------------------------------------------------------------------
+        ! Set up lengthscale arrays as a function of y
+        !if an array is given, then interpolate to the Ymesh
+        if (yL_read(1)) then
+          do ii=1,My
+            do jj=1,3
+              Lxvec_Ymesh(ii,jj) = interpolateToY(Ymesh(ii), yLx, Lxvec(:,jj))
+            enddo
+          enddo
+
+        !if the length scales are constant then copy to appropriate array
+        elseif (yL_constant(1)) then
+          do jj=1,3
+            Lxvec_Ymesh(:,jj) = Lxvec(1,jj)
+          enddo
+
+        !default is to use what's passed in
+        else
+          Lxvec_Ymesh=Lx
+
+        endif
+
+        !if an array is given, then interpolate to the Ymesh
+        if (yL_read(2)) then
+          do ii=1,My
+            do jj=1,3
+              Lyvec_Ymesh(ii,jj) = interpolateToY(Ymesh(ii), yLy, Lyvec(:,jj))
+            enddo
+          enddo
+
+        !if the length scales are constant then copy to appropriate array
+        elseif (yL_constant(2)) then
+          do jj=1,3
+            Lyvec_Ymesh(:,jj) = Lyvec(1,jj)
+          enddo
+
+        else
+        !default is to use what's passed in
+          Lyvec_Ymesh=Ly
+
+        endif
+
+        !if an array is given, then interpolate to the Ymesh
+        if (yL_read(3)) then
+          do ii=1,My
+            do jj=1,3
+              Lzvec_Ymesh(ii,jj) = interpolateToY(Ymesh(ii), yLz, Lzvec(:,jj))
+            enddo
+          enddo
+
+        !if the length scales are constant then copy to appropriate array
+        elseif (yL_constant(3)) then
+          do jj=1,3
+            Lzvec_Ymesh(:,jj) = Lzvec(1,jj)
+          enddo
+
+        !default is to use what's passed in
+        else
+          Lzvec_Ymesh=Lz
+
+        endif
+        !----------------------------------------------------------------------------
 
 
 
@@ -221,9 +299,13 @@ contains
         Uat3=0._dp
 
         ! t=0
-        call Ualpha(Uat1, 1)
-        if (Nextra>=1) call Ualpha(Uat2, 2)
-        if (Nextra>=2) call Ualpha(Uat3, 3)
+        call Ualpha_with_variable_LS(Uat1,1)
+        if (Nextra>=1) call Ualpha_with_variable_LS(Uat2, 2)
+        if (Nextra>=2) call Ualpha_with_variable_LS(Uat3, 3)
+
+        !call Ualpha(Uat1, 1)
+        !if (Nextra>=1) call Ualpha(Uat2, 2)
+        !if (Nextra>=2) call Ualpha(Uat3, 3)
         Ua=Uat1
 
 
@@ -285,7 +367,11 @@ contains
                   bjj,  &
                   bkk,  &
                   Ymesh,&
-                  Zmesh )
+                  Zmesh,&
+                  Lxvec_Ymesh, &
+                  Lyvec_Ymesh, &
+                  Lzvec_Ymesh &
+                  )
 
       if (yuu_read.or.yuu_constant) deallocate(yuu, uu, vv, ww, uv, uw, vw)
       if (yvel_read.or.yvel_constant) deallocate(yvel, velprof)
@@ -304,22 +390,167 @@ contains
       ii = Nextra - chooseVel + 1
       bii_padded=0._dp
       bii_padded(-Nx+ii:Nx+ii)=bii
-      call bijk_times_R( Va(:,:,1), Rx(-Nx:Nx+Nextra,:,:), bii_padded )
-      call bijk_times_R( Va(:,:,2), Ry(-Nx:Nx+Nextra,:,:), bii_padded )
-      call bijk_times_R( Va(:,:,3), Rz(-Nx:Nx+Nextra,:,:), bii_padded )
+      call bijk_times_R( Va(:,:,1), Rx(-Nx:Nx+Nextra,:,:), bii_padded, bjj, bkk )
+      call bijk_times_R( Va(:,:,2), Ry(-Nx:Nx+Nextra,:,:), bii_padded, bjj, bkk )
+      call bijk_times_R( Va(:,:,3), Rz(-Nx:Nx+Nextra,:,:), bii_padded, bjj, bkk )
 
 
     end subroutine Ualpha
+
+
+    !---------------------------------------------------------------------------
+    !---------------------------------------------------------------------------
+    !---------------------------------------------------------------------------
+    !Evaluate the velocity perturbation for all velocity components
+    subroutine Ualpha_with_variable_LS(Va,chooseVel)
+      implicit none
+
+      integer,                intent(in) :: chooseVel
+
+      real(dp), dimension(My,Mz,3), intent(out) :: Va
+      integer :: ii
+
+      ii=1
+      call Velocity_wih_variable_LS(Va(:,:,ii), Rx, choosevel, Lxvec_Ymesh(:,ii), &
+                                                               Lyvec_Ymesh(:,ii), &
+                                                               Lzvec_Ymesh(:,ii))
+      ii=2
+      call Velocity_wih_variable_LS(Va(:,:,ii), Ry, choosevel, Lxvec_Ymesh(:,ii), &
+                                                               Lyvec_Ymesh(:,ii), &
+                                                               Lzvec_Ymesh(:,ii))
+      ii=3
+      call Velocity_wih_variable_LS(Va(:,:,ii), Rz, choosevel, Lxvec_Ymesh(:,ii), &
+                                                               Lyvec_Ymesh(:,ii), &
+                                                               Lzvec_Ymesh(:,ii))
+
+      !stop
+    end subroutine Ualpha_with_variable_LS
+
+    !---------------------------------------------------------------------------
+    !---------------------------------------------------------------------------
+    !---------------------------------------------------------------------------
+    !Evaluate the velocity perturbation for a single velocity component
+    subroutine Velocity_wih_variable_LS(Va, Rijk, choosevel, LSx, LSy, LSz)
+      implicit none
+
+      real(dp), dimension(My,Mz), intent(out) :: Va
+      real(dp), dimension(-Nx:Nx+Nextra, -Ny+1:Ny+My, -Nz+1:Nz+Mz), intent(in) :: Rijk
+      integer,                    intent(in) :: chooseVel
+      real(dp), dimension(My),    intent(in) :: LSx, LSy, LSz
+
+      real(dp), dimension(-Nx:Nx) :: bbi
+      real(dp), dimension(-Ny:Ny) :: bbj
+      real(dp), dimension(-Nz:Nz) :: bbk
+
+      integer :: ii, jj, kk, mm
+
+      real(dp), dimension(-Nx:Nx+Nextra) :: bii_padded
+
+
+      do mm=1,My
+
+        ! For a Random array
+        ! These loops will generate the filter coefficients
+        bbi=0._dp
+        bbj=0._dp
+        bbk=0._dp
+
+
+        if (LSx(mm)>1.0e-12_dp) then
+          do ii=-Nx,Nx
+            bbi(ii) = btildek2(dx, ii, LSx(mm))
+          enddo
+          bbi = bbi/sqrt( sum( bbi*bbi)  )
+        endif
+
+        if (LSy(mm)>1.0e-12_dp) then
+          do jj=-Ny,Ny
+            bbj(jj) = btildek2(DYmesh(mm), jj, LSy(mm))
+          enddo
+          bbj = bbj/sqrt( sum( bbj*bbj)  )
+        endif
+
+        if (LSz(mm)>1.0e-12_dp) then
+          do kk=-Nz,Nz
+            bbk(kk) = btildek2(DZmesh(mm), kk, LSz(mm))
+          enddo
+          bbk = bbk/sqrt( sum( bbk*bbk)  )
+        endif
+
+          !write(*,'(I4, 1f9.6, f9.5, f6.1 )') mm
+          !write(*,'(A4, 1f9.6, f9.5, f6.1 )') ' ',  dx, LSx(mm), LSx(mm)/dx
+          !write(*,'(A4, 1f9.6, f9.5, f6.1 )') ' ',  DYMesh(mm), LSy(mm), LSy(mm)/DYmesh(mm)
+          !write(*,'(A4, 1f9.6, f9.5, f6.1 )') ' ',  DZmesh(mm), LSz(mm), LSz(mm)/DZmesh(mm)
+          !print*,
+
+        ii = Nextra - chooseVel + 1
+        bii_padded=0._dp
+        bii_padded(-Nx+ii:Nx+ii)=bbi
+        call bijk_times_Rtest( Va(mm,:), Rijk, mm, bii_padded, bbj, bbk )
+
+      enddo
+
+    !print*,
+    !print*,
+    !print*,
+
+    end subroutine Velocity_wih_variable_LS
+
 
     !---------------------------------------------------------------------------
     !---------------------------------------------------------------------------
     !---------------------------------------------------------------------------
     !Evaluate the velocity perturbation
-    subroutine bijk_times_R(Vel, Rijk, bi)
+    subroutine bijk_times_Rtest(Vel, Rijk, j, bi, bj, bk)
       implicit none
 
       real(dp), dimension(-Nx:Nx+Nextra, -Ny+1:Ny+My, -Nz+1:Nz+Mz), intent(in) :: Rijk
       real(dp), dimension(-Nx:Nx+Nextra), intent(in) :: bi
+      real(dp), dimension(-Ny:Ny),        intent(in) :: bj
+      real(dp), dimension(-Nz:Nz),        intent(in) :: bk
+      integer,                            intent(in) :: j
+      real(dp), dimension(Mz), intent(out) :: Vel
+
+      real(dp), dimension(-Ny:Ny, -Nz+1:Nz+Mz) :: Rjk
+      real(dp), dimension(-Nz+1:Nz+Mz) :: Rk
+
+      integer :: jj, kk
+
+      Vel=0._dp
+
+
+        ! Reduce Rijk to a 2D array
+        do kk=-Nz+1,Nz+Mz
+          do jj=-Ny+j,Ny+j
+            Rjk(jj-j,kk) = sum(bi*Rijk(:,jj,kk))
+          enddo
+        enddo
+
+        ! Multiply by bjj
+        do kk=-Nz+1,Nz+Mz
+          Rk(kk) = sum(  bj*Rjk(:, kk ) )
+        enddo
+
+        ! Multiply by bkk
+        do kk=-Nz,Nz
+          Vel(:) = Vel(:) + bk(kk)*Rk(1+kk:Mz+kk)
+        enddo
+
+
+    end subroutine bijk_times_Rtest
+
+
+    !---------------------------------------------------------------------------
+    !---------------------------------------------------------------------------
+    !---------------------------------------------------------------------------
+    !Evaluate the velocity perturbation
+    subroutine bijk_times_R(Vel, Rijk, bi, bj, bk)
+      implicit none
+
+      real(dp), dimension(-Nx:Nx+Nextra, -Ny+1:Ny+My, -Nz+1:Nz+Mz), intent(in) :: Rijk
+      real(dp), dimension(-Nx:Nx+Nextra), intent(in) :: bi
+      real(dp), dimension(-Ny:Ny),        intent(in) :: bj
+      real(dp), dimension(-Nz:Nz),        intent(in) :: bk
       real(dp), dimension(My,Mz), intent(out) :: Vel
 
       real(dp), dimension(-Ny+1:Ny+My, -Nz+1:Nz+Mz) :: Rjk
@@ -339,13 +570,13 @@ contains
       ! Multiply by bjj
       do kk=-Nz+1,Nz+Mz
         do jj=1,My
-          Rk(jj,kk) = sum(  bjj*Rjk(-Ny+jj:Ny+jj, kk ) )
+          Rk(jj,kk) = sum(  bj*Rjk(-Ny+jj:Ny+jj, kk ) )
         enddo
       enddo
 
       ! Multiply by bkk
       do kk=-Nz,Nz
-        Vel(:,:) = Vel(:,:) + bkk(kk)*Rk(:,kk+1:Mz+kk)
+        Vel(:,:) = Vel(:,:) + bk(kk)*Rk(:,kk+1:Mz+kk)
       enddo
 
 
@@ -467,7 +698,7 @@ contains
 
         if (time>currentTime) then
 
-          print*, 'current time: ', time, timeArray(1,1), currentTime, nUpdated
+          print*, 'current time: ', time, timeArray(1,1), currentTime
           currentTime=time
 
           dt = dx ! just for clarity
@@ -491,9 +722,13 @@ contains
 
           write(*,'(A)') 'DNSbc: Updated random array.'
 
-          call Ualpha(Uat1, 1)
-          if (Nextra>=1) call Ualpha(Uat2, 2)
-          if (Nextra>=2) call Ualpha(Uat3, 3)
+          call Ualpha_with_variable_LS(Uat1,1)
+          if (Nextra>=1) call Ualpha_with_variable_LS(Uat2, 2)
+          if (Nextra>=2) call Ualpha_with_variable_LS(Uat3, 3)
+
+          !call Ualpha(Uat1, 1)
+          !if (Nextra>=1) call Ualpha(Uat2, 2)
+          !if (Nextra>=2) call Ualpha(Uat3, 3)
 
           call interpolateVelocity(time)
           !Ua=Uat1
@@ -645,6 +880,42 @@ contains
       bk = btildek(k,n)/sqrt( bksum2 )
 
     end function bk
+
+
+    !---------------------------------------------------------------------------
+    !---------------------------------------------------------------------------
+    !---------------------------------------------------------------------------
+    ! Support functions for the DNS filter
+    function btildek2(dx,k,L)
+      integer,  intent(in) :: k
+      real(dp), intent(in) :: dx, L
+
+      real(dp) :: btildek2
+
+      btildek2 = exp( -pi*0.5_dp*(dx*dx*real(k*k,dp))/(L*L) )
+
+    end function btildek2
+
+    !---------------------------------------------------------------------------
+    !---------------------------------------------------------------------------
+    !---------------------------------------------------------------------------
+    function bk2(dx,k,L,NN)
+      integer, intent(in) :: k, NN
+      real(dp), intent(in) :: dx, L
+      real(dp) :: bk2
+
+      real(dp) :: bksum2
+      integer  :: i
+
+
+      bksum2=0._dp
+      do i=-NN,NN
+        bksum2 = bksum2 + btildek2(dx, i, L)**2
+      enddo
+
+      bk2 = btildek2(dx, k, L)/sqrt( bksum2 )
+
+    end function bk2
 
 end
 

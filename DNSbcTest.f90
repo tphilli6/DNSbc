@@ -5,8 +5,16 @@ program main
 
   implicit none
 
-  integer,  parameter :: dp=selected_real_kind(15,307)
-  integer :: niter=1
+  integer, parameter :: dp=selected_real_kind(15,307)
+  integer, parameter :: niter=2000
+  real(dp) :: dt=0.003_dp ! should be at least half the smallest length scale so nx>=2
+  real(dp) :: Ly=2.0_dp
+  real(dp) :: Lz=2.0_dp
+
+  real(dp) :: LSx = 0.3_dp !this should be the largest length scale
+  real(dp) :: LSy = 0.35_dp
+  real(dp) :: LSz = 0.35_dp
+
 
   integer :: n,ii,jj,kk
   real(dp), dimension(3) :: vel
@@ -19,14 +27,36 @@ program main
   real(dp) :: uu, vv, ww, uv, uw, vw
 
   integer :: nave
-  integer, parameter :: MMy=10
-  integer, parameter :: MMz=10
+  integer, parameter :: MMy=41
+  integer, parameter :: MMz=101
+
+  real(dp), dimension(MMy) :: LSx_test, LSz_test
+  real(dp)                 :: LSy_test
+
+
   real(dp), dimension(MMy) :: YYmesh
   real(dp), dimension(MMz) :: ZZmesh
 
   integer :: rank, nproc, ierr
 
   real(dp) :: t0, t1, tstart, tfinal
+
+  real(dp), dimension(MMy, MMz, niter) :: xvel, yvel, zvel
+  real(dp), dimension(MMy, MMz, niter) :: xvelp, yvelp, zvelp
+  real(dp) :: pi = 4_dp*atan(1._dp)
+
+
+  interface
+    subroutine setLengthScale(selectfile, L_uu, L_vv, L_ww, L_avg)
+      use DNSbc, only : dp, yLx, yLy, yLz, Lxvec, Lyvec, Lzvec, yL_read, yL_constant
+
+      real(dp), optional, intent(in) :: L_uu, L_vv, L_ww, L_avg
+      integer,            intent(in) :: selectfile
+    end subroutine
+  end interface
+
+
+
 
    !MPI test components
    call mpi_init(ierr)
@@ -44,30 +74,13 @@ program main
 
   ! Fast Test
   do ii=1,MMy
-    YYmesh(ii) = real(ii,dp)*(1._dp/MMy-1)
+    !YYmesh(ii) = Ly*real(ii-1,dp)/real(MMy-1,dp)-1._dp
+    YYmesh(ii) = cos( (MMy-ii)*pi/(MMy-1) )
   enddo
   do ii=1,MMz
-    ZZmesh(ii) = real(ii,dp)*(1._dp/MMz-1)
+    ZZmesh(ii) = Lz*real(ii-1,dp)/real(MMz-1,dp)
   enddo
-  call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .000001_dp, .005_dp/9._dp, 0.005_dp/9._dp, 10, 10, &
-                      YYmesh, ZZmesh, .true., .true.)
 
-  ! More realistic test but still fast-ish
-  !call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .000001_dp, .005_dp/29._dp, 0.005_dp/29._dp, 30, 30, &
-  !                    .true., .true.)
-
-  ! Tests of scaling  ------------------------------------------------
-  !call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .000001_dp, .005_dp/79._dp, 0.005_dp/79._dp, 80, 80, &
-  !                    .true., .true.)
-
-  !call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .0000005_dp, .005_dp/159._dp, 0.005_dp/159._dp, 160, 160, &
-  !                    .false., .false.)
-
-  !call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .00000025_dp, .005_dp/319._dp, 0.005_dp/319._dp, 320, 320, &
-  !                    .false., .false.)
-
-  !call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .000000125_dp, .005_dp/639._dp, 0.005_dp/639._dp, 640, 640, &
-  !                    .false., .false.)
 
 
   ! Expected
@@ -81,6 +94,43 @@ program main
   Rij(1,:) = (/uu, uv, uw/)
   Rij(2,:) = (/uv, vv, vw/)
   Rij(3,:) = (/uw, vw, ww/)
+
+  !call setTurbProperties(uu, vv, ww, uv, uw, vw)
+  !call setVelProfile(ubar)
+  call setLengthScale(1, L_avg=LSx)
+  call setLengthScale(2, L_avg=LSy)
+  call setLengthScale(3, L_avg=LSz)
+
+  call readTurbProperties('Channel_inflow_turbulence.txt')
+  call readVelProfile('Channel_inflow_velocity.txt')
+  !call readLengthScale('Channel_LengthScaleX.txt',1)
+  !call readLengthScale('Channel_LengthScaleY.txt',2)
+  !call setLengthScale(2, L_avg=LSy)
+  !call readLengthScale('Channel_LengthScaleZ.txt',3)
+
+
+
+
+  call setupDNSFilter(LSx, LSy, LSz, dt, Ly/real(MMy,dp), Lz/real(MMz,dp), MMy, MMz, &
+                      YYmesh, ZZmesh, .true., .true.)
+
+  ! More realistic test but still fast-ish
+  !call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .000001_dp, .005_dp/29._dp, 0.005_dp/29._dp, 30, 30, &
+  !                    .true., .true.)
+
+  ! Tests of scaling  ------------------------------------------------
+  !call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .000001_dp, .005_dp/79._dp, 0.005_dp/79._dp, 80, 80, &
+  !                    YYmesh, ZZmesh, .true., .true.)
+
+  !call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .0000005_dp, .005_dp/159._dp, 0.005_dp/159._dp, 160, 160, &
+  !                    YYmesh, ZZmesh, .false., .false.)
+
+  !call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .00000025_dp, .005_dp/319._dp, 0.005_dp/319._dp, 320, 320, &
+  !                    .false., .false.)
+
+  !call setupDNSFilter(0.00001_dp, .001_dp, .001_dp, .000000125_dp, .005_dp/639._dp, 0.005_dp/639._dp, 640, 640, &
+  !                    .false., .false.)
+
 
 
 
@@ -104,7 +154,21 @@ program main
           !call Ualpha(vel, jj, kk)
           call DNSVelocityPerturbation(vp, jj, kk)
           !call DNSVelocityPerturbationX(vp, YYmesh(jj), ZZmesh(kk))
-          call DNSVelocity(vel, vp, ubar, Rij)
+
+          !call DNSVelocity(vel, vp, ubar, Rij)
+
+          call getDNSvelocity(yymesh(jj), zzmesh(kk), vel)
+
+
+
+          xvel(jj,kk,n) = vel(1)
+          yvel(jj,kk,n) = vel(2)
+          zvel(jj,kk,n) = vel(3)
+
+          xvelp(jj,kk,n) = vp(1)
+          yvelp(jj,kk,n) = vp(2)
+          zvelp(jj,kk,n) = vp(3)
+
           vsum = vsum + vel
           nave = nave + 1
 
@@ -127,7 +191,7 @@ program main
       vwt = vws/nave
 
 
-      call DNSUpdate(0.000005*real(n,dp))
+      call DNSUpdate(dt*real(n,dp))
 
       call cpu_time(t1)
 
@@ -148,9 +212,21 @@ program main
       print*, '----------------------------------------------------------------'
     endif
 
+    write(77,*) xvel
+
+
     call MPI_Barrier(MPI_COMM_WORLD, ierr)
 
     write(*,'(A, I2, A1, 3f8.4, 6f9.3)') 'Processor ', rank, ':', vbar, uut, vvt, wwt, uvt, uwt, vwt
+
+
+
+    call calc_turb_properties(yymesh, xvel, yvel, zvel, niter, MMy, MMz)
+
+    call calc_length_scale(LSx_test, LSy_test, LSz_test, xvelp,niter,MMy,MMz, dt, Ly/real(MMy-1,dp), Lz/real(MMz-1,dp), yymesh, 1 )
+    call calc_length_scale(LSx_test, LSy_test, LSz_test, yvelp,niter,MMy,MMz, dt, Ly/real(MMy-1,dp), Lz/real(MMz-1,dp), yymesh, 2 )
+    call calc_length_scale(LSx_test, LSy_test, LSz_test, zvelp,niter,MMy,MMz, dt, Ly/real(MMy-1,dp), Lz/real(MMz-1,dp), yymesh, 3 )
+
 
     call closeDNSFilter()
 
@@ -230,7 +306,7 @@ end
   ! readTurbProperties and getTurbProperties test
   !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%'
   subroutine readTurbPropertiesTest
-    use dnsbc, only : dp, yuu, uu, vv, ww, uv, uw, vw
+    use dnsbc, only : dp, yuu, uu, vv, ww, uv, uw, vw, yuu_read, yuu_constant
 
     real(dp) :: uuOut, vvOut, wwOut, uvOut, uwOut, vwOut
 
@@ -270,13 +346,18 @@ end
     write(*,'(A18,6(f5.1))') ' ',uuOut, vvOut, wwOut, uvOut, uwOut, vwOut
     print*, '-----------------------------------------------------------------------'
     print*,
+
+    deallocate(yuu, uu, vv, ww, uv, uw, vw)
+    yuu_read=.false.
+    yuu_constant=.false.
+
   end subroutine
 
   !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%'
   ! readVelProfile and getVelocity test
   !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%'
   subroutine readVelProfileTest
-    use dnsbc, only : dp, yvel, velprof
+    use dnsbc, only : dp, yvel, velprof, yvel_read, yvel_constant
 
     integer :: n=2
     real(dp), dimension(3) :: veltest
@@ -319,6 +400,9 @@ end
     print*, '-----------------------------------------------------------------------'
     print*,
 
+    deallocate( yvel, velprof)
+    yvel_read=.false.
+    yvel_constant=.false.
 
   end subroutine
 
@@ -375,7 +459,7 @@ end
   end subroutine
 
   subroutine setLengthScaleTest
-  use dnsbc, only : dp, yLx, yLy, yLz, Lxvec, Lyvec, Lzvec
+  use dnsbc, only : dp, yLx, yLy, yLz, Lxvec, Lyvec, Lzvec, yL_read, yL_constant
 
     print*, '-----------------------------------------------------------------------'
     print*, 'setLengthScale Components test:'
@@ -399,8 +483,252 @@ end
     write(*,'(A)') '         Output: |   y   | Lz_uu | Lz_vv | Lz_ww |'
     write(*, '(A15, 4(F8.1))') ' ', yLz(1), Lzvec(1,1), Lzvec(1,2), Lzvec(1,3)
 
+    write(*, *) 'yL_read for z: ',     yL_read(3)
+    write(*, *) 'yL_constant for z: ', yL_constant(3)
+
     print*, '-----------------------------------------------------------------------'
     print*,
 
+    deallocate( yLx, yLy, yLz, Lxvec, Lyvec, Lzvec)
+    yL_read=.false.
+    yL_constant=.false.
+
   end subroutine
+
+
+  subroutine calc_turb_properties(ymesh, xvel, yvel, zvel, nx, ny, nz)
+    use dnsbc, only : dp
+
+    integer, intent(in) :: nx, ny, nz
+    real(dp), dimension(ny),         intent(in) :: ymesh
+    real(dp), dimension(ny, nz, nx), intent(in) :: xvel, yvel, zvel
+
+
+    real(dp), dimension(ny) :: uavg, vavg, wavg, uu, vv, ww, uv, uw, vw
+    real(dp), dimension(nz,nx) :: up, vp, wp
+
+    real(dp) :: uuOut, vvOut, wwOut, uvOut, uwOut, vwOut
+    real(dp), dimension(3) :: Vinf
+    integer :: jj
+
+
+    !Calc average velocities
+    do jj=1,ny
+      uavg(jj)=sum(xvel(jj,:,:))/real(nz*nx,dp)
+      vavg(jj)=sum(yvel(jj,:,:))/real(nz*nx,dp)
+      wavg(jj)=sum(zvel(jj,:,:))/real(nz*nx,dp)
+    enddo
+
+    do jj=1,ny
+      up = xvel(jj,:,:)-uavg(jj)
+      vp = yvel(jj,:,:)-vavg(jj)
+      wp = zvel(jj,:,:)-wavg(jj)
+
+      uu(jj) = sum( up*up)/real(nz*nx,dp)
+      vv(jj) = sum( vp*vp)/real(nz*nx,dp)
+      ww(jj) = sum( wp*wp)/real(nz*nx,dp)
+
+      uv(jj) = sum( up*vp)/real(nz*nx,dp)
+      uw(jj) = sum( up*wp)/real(nz*nx,dp)
+      vw(jj) = sum( vp*wp)/real(nz*nx,dp)
+
+    enddo
+
+
+    print*, '--------------------------------------------------'
+    print*, 'Turbulent statistics------------------------------'
+    print*, '--------------------------------------------------'
+    print*,
+    print*, 'Average velocity'
+    print*, '--------------------------------------------------'
+    do jj=1,ny
+      call getVelocity(ymesh(jj), Vinf)
+      write(*,'(f10.6, 3(f10.6, A2, f9.6, A1))') ymesh(jj), uavg(jj), '[', Vinf(1), ']', &
+                                                            vavg(jj), '[', Vinf(2), ']', &
+                                                            wavg(jj), '[', Vinf(3), ']'
+    enddo
+
+    open(21,file='VelocityTest.txt',status='unknown')
+    do jj=1,ny
+      call getVelocity(ymesh(jj), Vinf)
+      write(21,'(f10.6, 3(f10.6, f10.6))') ymesh(jj), uavg(jj), Vinf(1), &
+                                                     vavg(jj), Vinf(2), &
+                                                     wavg(jj), Vinf(3)
+    enddo
+    close(21)
+
+    print*, '--------------------------------------------------'
+    write(*,'(A10, 3(f10.6))') 'Average ', sum(uavg)/real(ny,dp), sum(vavg)/real(ny,dp), sum(wavg)/real(ny,dp)
+    print*, '--------------------------------------------------'
+
+    print*,
+    print*, 'Second moments '
+    print*, '--------------------------------------------------'
+    do jj=1,ny
+      call getTurbProperties(ymesh(jj), uuOut, vvOut, wwOut, uvOut, uwOut, vwOut)
+      write(*,'(f10.6, 6(f10.6, A2, f9.6, A1))') ymesh(jj), uu(jj), ' [', uuOut,']', &
+                                                            vv(jj), ' [', vvOut,']', &
+                                                            ww(jj), ' [', wwOut,']', &
+                                                            uv(jj), ' [', uvOut,']', &
+                                                            uw(jj), ' [', uwOut,']', &
+                                                            vw(jj), ' [', vwOut,']'
+    enddo
+
+
+    open(21,file='SecondMomentsTest.txt',status='unknown')
+    do jj=1,ny
+      call getTurbProperties(ymesh(jj), uuOut, vvOut, wwOut, uvOut, uwOut, vwOut)
+      write(21,'(f10.6, 6(f10.6, f9.6))') ymesh(jj), uu(jj),  uuOut, &
+                                                            vv(jj),  vvOut, &
+                                                            ww(jj),  wwOut, &
+                                                            uv(jj),  uvOut, &
+                                                            uw(jj),  uwOut, &
+                                                            vw(jj),  vwOut
+    enddo
+    close(21)
+
+    print*, '--------------------------------------------------'
+    write(*,'(A10, 6(f10.6))') 'Average ', sum(uu)/real(ny,dp), &
+                                           sum(vv)/real(ny,dp), &
+                                           sum(ww)/real(ny,dp), &
+                                           sum(uv)/real(ny,dp), &
+                                           sum(uw)/real(ny,dp), &
+                                           sum(vw)/real(ny,dp)
+    print*, '--------------------------------------------------'
+
+
+  end subroutine calc_turb_properties
+
+  subroutine calc_length_scale(Lx, Ly, Lz, vel,nx,ny,nz, dx, dy, dz, ymesh, selectVel)
+  use dnsbc, only : dp
+
+    integer,                       intent(in) :: selectVel
+    real(dp), dimension(ny),       intent(in) :: ymesh
+    real(dp), dimension(ny,nz,nx), intent(in) :: vel
+    real(dp),                      intent(in) :: dx, dy, dz
+
+    integer :: ii, jj, kk
+    real(dp), dimension(ny-1) :: fy, fysum
+    real(dp), dimension(nz-1) :: fz, fzsum
+    real(dp), dimension(nx-1) :: fx, fxsum
+
+    real(dp), dimension(ny), intent(out) :: Lx, Lz
+    real(dp),                intent(out) :: Ly
+
+    real(dp), dimension(3) :: LSx, LSy, LSz
+
+
+    fysum=0._dp
+    do ii=1,nx
+      do kk=1,nz
+        do jj=1,ny-1
+
+          fy(jj)=sum(  vel(1:ny+1-jj, kk, ii)*vel(jj:ny, kk, ii) )
+
+        enddo
+        fy = fy/fy(1)
+
+        fysum = fysum + fy
+
+      enddo
+    enddo
+
+    fysum = fysum/real( nx*nz, dp )
+
+    do jj=1,ny-1
+      if (fysum(jj)>exp(-3.1415/4) .and. fysum(jj+1)<exp(-3.1415/4)) then
+        Ly = ( (exp(-3.1415/4)-fysum(jj+1))/(fysum(jj)-fysum(jj+1)) + jj)*dy
+      endif
+    enddo
+
+
+    !find z length scale
+    do jj = 1,ny
+
+      fzsum=0._dp
+      do ii=1,nx
+        do kk=1,nz-1
+          fz(kk) = sum( vel(jj, 1:nz+1-kk, ii)*vel(jj,kk:nz,ii) )
+        enddo
+        fz = fz/fz(1)
+        fzsum = fzsum + fz
+      enddo
+
+      fzsum = fzsum/real( nx, dp)
+      do kk=1,nz-2
+        if (fzsum(kk)>exp(-3.1415/4) .and. fzsum(kk+1)<exp(-3.1415/4)) then
+          Lz(jj) = ( (exp(-3.1415/4)-fzsum(kk+1))/(fzsum(kk)-fzsum(kk+1)) + kk)*dz
+        endif
+      enddo
+
+    enddo
+
+    !find x length scale
+
+    do jj = 1,ny
+
+      fxsum=0._dp
+      do kk=1,nz
+        do ii=1,nx-1
+          fx(ii) = sum( vel(jj, kk, 1:nx+1-ii)*vel(jj,kk,ii:nx) )
+        enddo
+        fx = fx/fx(1)
+        fxsum = fxsum + fx
+      enddo
+
+      fxsum = fxsum/real( nz, dp )
+      do ii=1,nx-2
+        if (fxsum(ii)>exp(-3.1415/4) .and. fxsum(ii+1)<exp(-3.1415/4)) then
+          Lx(jj) = ( (exp(-3.1415/4)-fxsum(ii+1))/(fxsum(ii)-fxsum(ii+1)) + ii)*dx
+        endif
+      enddo
+
+
+    enddo
+
+
+
+    print*, '--------------------------------------------------'
+
+    if (selectVel.eq.1) then
+      print*, 'X-velocity Length Scale --------------------------'
+      open(21,file='Xvelocity_lengthscale.txt',status='unknown')
+    elseif (selectVel.eq.2) then
+      print*, 'Y-velocity Length Scale --------------------------'
+      open(21,file='Yvelocity_lengthscale.txt',status='unknown')
+    elseif (selectVel.eq.3) then
+      print*, 'Z-velocity Length Scale --------------------------'
+      open(21,file='Zvelocity_lengthscale.txt',status='unknown')
+    endif
+    print*, '--------------------------------------------------'
+    print*,
+    do jj=1,ny
+      call getLengthScale(ymesh(jj), LSx, LSy, LSz)
+      write(*,'(f10.6, 3(f10.6, A2, f9.6, A1))') ymesh(jj), Lx(jj), '[', LSx(selectVel), ']', &
+                                                            Ly,     '[', LSy(selectVel), ']', &
+                                                            Lz(jj), '[', LSz(selectVel), ']'
+    enddo
+
+    do jj=1,ny
+      call getLengthScale(ymesh(jj), LSx, LSy, LSz)
+      write(21,'(f10.6, 3(f10.6, f9.6))') ymesh(jj), Lx(jj), LSx(selectVel), &
+                                                             Ly,     LSy(selectVel), &
+                                                             Lz(jj), LSz(selectVel)
+    enddo
+
+    close(21)
+
+
+
+    print*, '--------------------------------------------------'
+    write(*,'(A10, 6(f10.6))') 'Average ', sum(Lx)/real(ny,dp), &
+                                           Ly,                  &
+                                           sum(Lz)/real(ny,dp)
+    print*, '--------------------------------------------------'
+
+
+
+
+
+  end subroutine calc_length_scale
 

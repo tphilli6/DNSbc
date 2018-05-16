@@ -1,4 +1,4 @@
-! Functions detached from a module for easier calling
+!'(4(E23.15))i Functions detached from a module for easier calling
 !
 !---------------------------------------------------------------------------
 ! Subroutines:
@@ -61,7 +61,7 @@ subroutine readTurbProperties(turbFile)
     read(21, *, iostat=ierr) n
     allocate( yuu(n), uu(n), vv(n), ww(n), uv(n), uw(n), vw(n) )
     do i=1,n
-      read(21, '(7(E23.15))', iostat=ierr) yuu(i), uu(i), vv(i), ww(i), uv(i), uw(i), vw(i)
+      read(21, *, iostat=ierr) yuu(i), uu(i), vv(i), ww(i), uv(i), uw(i), vw(i)
     enddo
     close(21)
 
@@ -138,7 +138,7 @@ subroutine readVelProfile(velFile)
     read(21, *, iostat=ierr) n
     allocate( yvel(n), velprof(n,3) )
     do i=1,n
-      read(21, '(4(E23.15))', iostat=ierr) yvel(i), velprof(i,:)
+      read(21, *, iostat=ierr) yvel(i), velprof(i,:)
     enddo
     close(21)
 
@@ -177,13 +177,13 @@ subroutine setVelProfile(velProfIn)
   use DNSbc, only : dp, yvel, velProf, yvel_read, yvel_constant
   implicit none
 
-  real(dp) :: velProfIn
+  real(dp), dimension(3) :: velProfIn
 
   if (.not.yvel_read) then
 
     allocate( yvel(1), velprof(1,3) )
     yvel = 1._dp
-    velProf = velProfIn
+    velProf(1,:) = velProfIn
     yvel_constant = .true.
 
   else
@@ -252,7 +252,7 @@ subroutine readLengthScaleBase(filename, y, L, yL_read, yL_constant)
     read(21, *, iostat=ierr) n
     allocate( y(n), L(n,3) )
     do i=1,n
-      read(21, '(4(E23.15))', iostat=ierr) y(i), L(i,1), L(i,2), L(i,3)
+      read(21, *, iostat=ierr) y(i), L(i,1), L(i,2), L(i,3)
     enddo
     close(21)
     yL_read=.true.
@@ -371,6 +371,65 @@ subroutine setLengthScaleBase(y, L, yL_read, yL_constant, &
 
   endif
 end subroutine setLengthScaleBase
+
+
+!Get length scale @ y
+!---------------------------------------------------------------------------
+!---------------------------------------------------------------------------
+!---------------------------------------------------------------------------
+subroutine getLengthScale(y, Lx, Ly, Lz)
+  use DNSbc, only : dp, interpolateToY,  &
+                    yLx, yLy, yLz,       &
+                    Lxvec, Lyvec, Lzvec, &
+                    yL_read, yL_constant
+  implicit none
+
+  real(dp), intent(in) :: y
+  real(dp), dimension(3), intent(out) :: Lx, Ly, Lz
+
+  ! Length scale in the x direction
+  if (yL_read(1)) then
+    Lx(1) = interpolateToY(y, yLx, Lxvec(:,1))
+    Lx(2) = interpolateToY(y, yLx, Lxvec(:,2))
+    Lx(3) = interpolateToY(y, yLx, Lxvec(:,3))
+
+  elseif (yL_constant(1)) then
+    Lx=Lxvec(1,:)
+
+  else
+    write(*,'(A)') 'Error! Length Scale (x) data not present.'
+    stop
+  endif
+
+
+
+  ! Length scale in the y direction
+  if (yL_read(2)) then
+    Ly(1) = interpolateToY(y, yLy, Lyvec(:,1))
+    Ly(2) = interpolateToY(y, yLy, Lyvec(:,2))
+    Ly(3) = interpolateToY(y, yLy, Lyvec(:,3))
+  elseif (yL_constant(2)) then
+    Ly=Lyvec(1,:)
+
+  else
+    write(*,'(A)') 'Error! Length Scale (y) data not present.'
+    stop
+  endif
+
+  if (yL_read(3)) then
+    Lz(1) = interpolateToY(y, yLz, Lzvec(:,1))
+    Lz(2) = interpolateToY(y, yLz, Lzvec(:,2))
+    Lz(3) = interpolateToY(y, yLz, Lzvec(:,3))
+  elseif (yL_constant(3)) then
+    Lz=Lzvec(1,:)
+
+  else
+    write(*,'(A)') 'Error! Length Scale (z) data not present.'
+    stop
+  endif
+
+end subroutine
+
 
 !Get velocity @ y
 !---------------------------------------------------------------------------
@@ -571,6 +630,15 @@ subroutine DNSVelocity(vel, vp, velAve, Rij)
   a31 = Rij(3,1)/a11
   a32 = ( Rij(3,2) - a21*a31 )/a22
   a33 = sqrt( Rij(3,3) - a31**2 - a32**2 )
+
+  if (a11.lt.1.0e-12_dp) then
+    a21=0._dp
+    a22=0._dp
+
+    a31=0._dp
+    a32=0._dp
+    a33=0._dp
+  endif
 
   vel(1) = velAve(1) + vp(1)*a11
   vel(2) = velAve(2) + vp(1)*a21 + vp(2)*a22
