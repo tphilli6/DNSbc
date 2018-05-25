@@ -1,19 +1,21 @@
 program main
-  use dnsbc, only : setupDNSFilter, closeDNSFilter, My, Mz, btildek, bk, &
-                    interpolateToY
+  use dnsbc, only : setupDNSFilter, closeDNSFilter, My, Mz, interpolateToY
   use mpi
 
   implicit none
 
-  integer, parameter :: dp=selected_real_kind(15,307)
-  integer, parameter :: niter=2000
-  real(dp) :: dt=0.003_dp ! should be at least half the smallest length scale so nx>=2
-  real(dp) :: Ly=2.0_dp
-  real(dp) :: Lz=2.0_dp
+  integer, parameter  :: dp=selected_real_kind(15,307)
+  real(dp), parameter :: pi = 4_dp*atan(1._dp)
 
-  real(dp) :: LSx = 0.3_dp !this should be the largest length scale
-  real(dp) :: LSy = 0.35_dp
-  real(dp) :: LSz = 0.35_dp
+  integer, parameter :: niter=100
+  real(dp), parameter :: r=4.0_dp
+  real(dp) :: dt=0.2_dp/r!0.003_dp ! should be at least half the smallest length scale so nx>=2
+  real(dp) :: Ly=4.0_dp
+  real(dp) :: Lz=4.0_dp!4.0_dp/6._dp*pi
+
+  real(dp) :: LSx = .8_dp!0.3_dp !this should be the largest length scale
+  real(dp) :: LSy = 1.6_dp!0.35_dp
+  real(dp) :: LSz = 1.6_dp!0.35_dp
 
 
   integer :: n,ii,jj,kk
@@ -27,8 +29,8 @@ program main
   real(dp) :: uu, vv, ww, uv, uw, vw
 
   integer :: nave
-  integer, parameter :: MMy=41
-  integer, parameter :: MMz=101
+  integer, parameter :: MMy=(11-1)*int(r)+1!65
+  integer, parameter :: MMz=(11-1)*int(r)+1!65!115!215
 
   real(dp), dimension(MMy) :: LSx_test, LSz_test
   real(dp)                 :: LSy_test
@@ -43,7 +45,6 @@ program main
 
   real(dp), dimension(MMy, MMz, niter) :: xvel, yvel, zvel
   real(dp), dimension(MMy, MMz, niter) :: xvelp, yvelp, zvelp
-  real(dp) :: pi = 4_dp*atan(1._dp)
 
 
   interface
@@ -54,8 +55,6 @@ program main
       integer,            intent(in) :: selectfile
     end subroutine
   end interface
-
-
 
 
    !MPI test components
@@ -95,23 +94,23 @@ program main
   Rij(2,:) = (/uv, vv, vw/)
   Rij(3,:) = (/uw, vw, ww/)
 
-  !call setTurbProperties(uu, vv, ww, uv, uw, vw)
-  !call setVelProfile(ubar)
+  call setTurbProperties(uu, vv, ww, uv, uw, vw)
+  call setVelProfile(ubar)
   call setLengthScale(1, L_avg=LSx)
   call setLengthScale(2, L_avg=LSy)
   call setLengthScale(3, L_avg=LSz)
 
-  call readTurbProperties('Channel_inflow_turbulence.txt')
-  call readVelProfile('Channel_inflow_velocity.txt')
+  !call readTurbProperties('Channel_inflow_turbulence.txt')
+  !call readVelProfile('Channel_inflow_velocity.txt')
   !call readLengthScale('Channel_LengthScaleX.txt',1)
   !call readLengthScale('Channel_LengthScaleY.txt',2)
-  !call setLengthScale(2, L_avg=LSy)
+  !!!call setLengthScale(2, L_avg=LSy)
   !call readLengthScale('Channel_LengthScaleZ.txt',3)
 
 
 
 
-  call setupDNSFilter(LSx, LSy, LSz, dt, Ly/real(MMy,dp), Lz/real(MMz,dp), MMy, MMz, &
+  call setupDNSFilter(LSx, LSy, LSz, dt, Ly/real(MMy-1,dp), Lz/real(MMz-1,dp), MMy, MMz, &
                       YYmesh, ZZmesh, .true., .true.)
 
   ! More realistic test but still fast-ish
@@ -212,9 +211,6 @@ program main
       print*, '----------------------------------------------------------------'
     endif
 
-    write(77,*) xvel
-
-
     call MPI_Barrier(MPI_COMM_WORLD, ierr)
 
     write(*,'(A, I2, A1, 3f8.4, 6f9.3)') 'Processor ', rank, ':', vbar, uut, vvt, wwt, uvt, uwt, vwt
@@ -223,6 +219,7 @@ program main
 
     call calc_turb_properties(yymesh, xvel, yvel, zvel, niter, MMy, MMz)
 
+    write(77,'(e23.14)') xvelp
     call calc_length_scale(LSx_test, LSy_test, LSz_test, xvelp,niter,MMy,MMz, dt, Ly/real(MMy-1,dp), Lz/real(MMz-1,dp), yymesh, 1 )
     call calc_length_scale(LSx_test, LSy_test, LSz_test, yvelp,niter,MMy,MMz, dt, Ly/real(MMy-1,dp), Lz/real(MMz-1,dp), yymesh, 2 )
     call calc_length_scale(LSx_test, LSy_test, LSz_test, zvelp,niter,MMy,MMz, dt, Ly/real(MMy-1,dp), Lz/real(MMz-1,dp), yymesh, 3 )
@@ -260,7 +257,7 @@ end
   ! btilde and bk Test
   !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%'
   subroutine btildeTest
-    use dnsbc, only : dp, btildek, bk
+    use dnsbc, only : dp, btildek, bkfun
 
     print*, '-----------------------------------------------------------------------'
     print*, 'bk tilde test:'
@@ -276,7 +273,7 @@ end
     print*, '-----------------------------------------------------------------------'
     print*, 'Input: k=1, n=2.7, Nx=5'
     print*, 'Expected output: 0.4906'
-    write(*,'(A,f6.4)') '          Output: ', bk(1, 2.7_dp, 5)
+    write(*,'(A,f6.4)') '          Output: ', bkfun(1, 2.7_dp, 5)
     print*, '-----------------------------------------------------------------------'
     print*,
 
@@ -600,17 +597,19 @@ end
   end subroutine calc_turb_properties
 
   subroutine calc_length_scale(Lx, Ly, Lz, vel,nx,ny,nz, dx, dy, dz, ymesh, selectVel)
-  use dnsbc, only : dp
+  use dnsbc, only : dp, interpolateToY
 
     integer,                       intent(in) :: selectVel
     real(dp), dimension(ny),       intent(in) :: ymesh
     real(dp), dimension(ny,nz,nx), intent(in) :: vel
     real(dp),                      intent(in) :: dx, dy, dz
 
-    integer :: ii, jj, kk
+    real(dp), parameter :: pi = 4_dp*atan(1._dp)
+    integer :: ii, jj, kk, j
     real(dp), dimension(ny-1) :: fy, fysum
     real(dp), dimension(nz-1) :: fz, fzsum
     real(dp), dimension(nx-1) :: fx, fxsum
+    real(dp), dimension(ny)   :: vel_eq, ymesh_eq
 
     real(dp), dimension(ny), intent(out) :: Lx, Lz
     real(dp),                intent(out) :: Ly
@@ -618,14 +617,45 @@ end
     real(dp), dimension(3) :: LSx, LSy, LSz
 
 
+
+
+    if (selectVel.eq.1) then
+      open(22,file='Xvelocity_correlation_functionX.txt',status='unknown')
+      open(23,file='Xvelocity_correlation_functionY.txt',status='unknown')
+      open(24,file='Xvelocity_correlation_functionZ.txt',status='unknown')
+    elseif (selectVel.eq.2) then
+      open(22,file='Yvelocity_correlation_functionX.txt',status='unknown')
+      open(23,file='Yvelocity_correlation_functionY.txt',status='unknown')
+      open(24,file='Yvelocity_correlation_functionZ.txt',status='unknown')
+    elseif (selectVel.eq.3) then
+      open(22,file='Zvelocity_correlation_functionX.txt',status='unknown')
+      open(23,file='Zvelocity_correlation_functionY.txt',status='unknown')
+      open(24,file='Zvelocity_correlation_functionZ.txt',status='unknown')
+    endif
+
+
+
+    do jj=1,ny
+      ymesh_eq(jj) = ymesh(1) + real(jj-1,dp)*dy
+    enddo
+
     fysum=0._dp
     do ii=1,nx
       do kk=1,nz
         do jj=1,ny-1
 
-          fy(jj)=sum(  vel(1:ny+1-jj, kk, ii)*vel(jj:ny, kk, ii) )
+          do j=1,ny
+            vel_eq(j)=interpolateToY(ymesh_eq(j), ymesh, vel(:,kk,ii))
+          enddo
+
+          fy(jj)=sum(  vel_eq(1:ny+1-jj)*vel_eq(jj:ny) )
 
         enddo
+
+        if (fy(1)<1.0e-12_dp) then
+          fy = 1._dp
+        endif
+
         fy = fy/fy(1)
 
         fysum = fysum + fy
@@ -635,14 +665,31 @@ end
 
     fysum = fysum/real( nx*nz, dp )
 
+    do jj=1,ny
+      write(23,'(f10.6)', advance='no') dy*real(jj-1,dp)
+    enddo
+    write(23,*) ' '
+
+    do jj=1,ny
+      write(23,'(f10.6)', advance='no') fysum(jj)
+    enddo
+    write(23,*) ' '
+
     do jj=1,ny-1
-      if (fysum(jj)>exp(-3.1415/4) .and. fysum(jj+1)<exp(-3.1415/4)) then
-        Ly = ( (exp(-3.1415/4)-fysum(jj+1))/(fysum(jj)-fysum(jj+1)) + jj)*dy
+      if (fysum(jj)>exp(-pi/4) .and. fysum(jj+1)<exp(-pi/4)) then
+        Ly = ( (exp(-pi/4)-fysum(jj))/(fysum(jj+1)-fysum(jj)) + (jj-1))*dy
       endif
     enddo
 
 
     !find z length scale
+    write(24,'(f10.6)',advance='no') 0._dp
+    do jj=1,nz-1
+      write(24,'(f10.6)', advance='no') dz*real(jj-1,dp)
+    enddo
+    write(24,*) ' '
+
+
     do jj = 1,ny
 
       fzsum=0._dp
@@ -650,20 +697,39 @@ end
         do kk=1,nz-1
           fz(kk) = sum( vel(jj, 1:nz+1-kk, ii)*vel(jj,kk:nz,ii) )
         enddo
+
+        if (fz(1)<1.0e-12_dp) then
+          fz = 1._dp
+        endif
+
         fz = fz/fz(1)
         fzsum = fzsum + fz
       enddo
 
       fzsum = fzsum/real( nx, dp)
       do kk=1,nz-2
-        if (fzsum(kk)>exp(-3.1415/4) .and. fzsum(kk+1)<exp(-3.1415/4)) then
-          Lz(jj) = ( (exp(-3.1415/4)-fzsum(kk+1))/(fzsum(kk)-fzsum(kk+1)) + kk)*dz
+        if (fzsum(kk)>exp(-pi/4) .and. fzsum(kk+1)<exp(-pi/4)) then
+          Lz(jj) = ( (exp(-pi/4)-fzsum(kk))/(fzsum(kk+1)-fzsum(kk)) + (kk-1))*dz
         endif
       enddo
+
+      write(24,'(f10.6)',advance='no') ymesh(jj)
+      do j=1,ny-1
+        write(24,'(f10.6)', advance='no') fzsum(j)
+      enddo
+      write(24,*) ' '
+
 
     enddo
 
     !find x length scale
+    write(22,'(f10.6)',advance='no') 0._dp
+    do jj=1,nx-1
+      write(22,'(f10.6)', advance='no') dx*real(jj-1,dp)
+    enddo
+    write(22,*) ' '
+
+
 
     do jj = 1,ny
 
@@ -672,20 +738,35 @@ end
         do ii=1,nx-1
           fx(ii) = sum( vel(jj, kk, 1:nx+1-ii)*vel(jj,kk,ii:nx) )
         enddo
+
+        if (fx(1)<1.0e-12_dp) then
+          fx = 1._dp
+        endif
+
         fx = fx/fx(1)
         fxsum = fxsum + fx
       enddo
 
       fxsum = fxsum/real( nz, dp )
       do ii=1,nx-2
-        if (fxsum(ii)>exp(-3.1415/4) .and. fxsum(ii+1)<exp(-3.1415/4)) then
-          Lx(jj) = ( (exp(-3.1415/4)-fxsum(ii+1))/(fxsum(ii)-fxsum(ii+1)) + ii)*dx
+        if (fxsum(ii)>exp(-pi/4) .and. fxsum(ii+1)<exp(-pi/4)) then
+          Lx(jj) = ( (exp(-pi/4)-fxsum(ii))/(fxsum(ii+1)-fxsum(ii)) + (ii-1))*dx
         endif
       enddo
+
+      write(22,'(f10.6)',advance='no') ymesh(jj)
+      do j=1,nx-1
+        write(22,'(f10.6)', advance='no') fxsum(j)
+      enddo
+      write(22,*) ' '
 
 
     enddo
 
+
+    close(22)
+    close(23)
+    close(24)
 
 
     print*, '--------------------------------------------------'
@@ -707,6 +788,7 @@ end
       write(*,'(f10.6, 3(f10.6, A2, f9.6, A1))') ymesh(jj), Lx(jj), '[', LSx(selectVel), ']', &
                                                             Ly,     '[', LSy(selectVel), ']', &
                                                             Lz(jj), '[', LSz(selectVel), ']'
+
     enddo
 
     do jj=1,ny
